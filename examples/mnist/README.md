@@ -19,6 +19,7 @@ Edit path to TensorFlow-Lite and flatbuffers in `bootstrap-cmake.sh`, then
 $ bootstrap-cmake.sh
 $ cd build
 $ make
+$ cd ..
 ```
 
 ## Prepare MNIST dataset
@@ -32,3 +33,9 @@ $ ../download-minist.sh
 $ gunzip *.gz
 ```
 
+## Run
+
+```
+$ cd build
+$ ./mnist (mnist.tflite) (mnist_data_directory)
+```

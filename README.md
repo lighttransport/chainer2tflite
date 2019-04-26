@@ -1,11 +1,11 @@
 # Chainer to TensorFlow-Lite converter
 
-`chainer2tflite` is a model converter from Chainer to TensorFlow-Lite
+`chainer2tflite` is a model converter from Chainer(Python + NPZ) to TensorFlow-Lite(flatbuffers format)
 
 ## Requirements
 
 * Chainer v5.4 or later
-* TensorFlow `r1.13` or later
+* TensorFlow `r1.13.1` or later
 * flatbuffers 1.10 or later
 * Python 3.6 or later
 
@@ -18,17 +18,18 @@ $ pip install flatbuffers
 
 ### For developers only
 
-Generate python binding from tflite schema.
+Python binding of tflite schema(version 3) is already added to `tflite` directory.
+If you want to re-generate python binding from tflite schema, use `flatc` to generate it:
 
 ```
-$ sh gen_tflite_from_schema.sh
+$ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 ```
 
 
 ## Supported layers/ops
 
 | Chainer         | tflite           | Comment              |
-| --------------- | ---------------- | -------------------- | 
+| --------------- | ---------------- | -------------------- |
 | Reshape         | RESHAPE          |                      |
 | LinearFunction  | MATMUL           |                      |
 | ReLU            | RELU             |                      |
@@ -36,10 +37,14 @@ $ sh gen_tflite_from_schema.sh
 | Conv2D          | CONV_2D          |                      |
 | ResizeImages    | RESIZE_BILINEAR  | `align_corners=true` |
 
+## Examples
+
+See `examples` directory.
+
 ## TODO
 
 * [ ] Android demo
-* [ ] Support TensorFlow-Lite micro(experimental) to run Chainer model on IoT devices
+* [ ] Support TensorFlow-Lite micro(experimental) to run Chainer-trained model on IoT devices
 
 ## License
 
