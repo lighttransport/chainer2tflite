@@ -29,6 +29,8 @@ THE SOFTWARE.
 #include <queue>
 #include <iterator>
 #include <fstream>
+#include <numeric>
+#include <random>
 
 #include "mnist-loader.h"
 
