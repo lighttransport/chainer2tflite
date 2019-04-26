@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 2.8)
 
+# cmake modules
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/../cmake)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/../cmake/sanitizers)
+find_package(Sanitizers) # Address sanitizer (-DSANITIZE_ADDRESS=ON)
+
 set(TFLITE_INCLUDE_DIR "" CACHE PATH "include path to tflite")
 set(TFLITE_LIBRARY_DIR "" CACHE PATH "library path to tflite")
 set(FLATBUFFERS_INCLUDE_DIR "" CACHE PATH "include path to flatbuffers")
@@ -15,6 +20,7 @@ endif()
 set(CMAKE_CXX_STANDARD 11)
 
 set(EXAMPLE_MNIST_SOURCES
+  mnist-loader.cc
   mnist.cc)
 
 find_package(Threads)
@@ -25,6 +31,7 @@ include_directories(${FLATBUFFERS_INCLUDE_DIR})
 link_directories(${TFLITE_LIBRARY_DIR})
 
 add_executable(mnist ${EXAMPLE_MNIST_SOURCES})
+add_sanitizers(mnist)
 
 target_link_libraries(mnist tensorflow-lite ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
 
