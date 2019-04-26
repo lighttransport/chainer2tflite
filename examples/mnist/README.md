@@ -1,17 +1,25 @@
 # mnist example
 
-## Supported platform
+## Convert model
+
+```python
+$ python convert_mnist_model.py
+```
+
+## Inference program
+
+### Supported platform
 
 * [x] Linux x64
 * [ ] AARCH64(Android and Linux)
 * [ ] Windows and macOS may work
 
-## How to compile
+### How to compile
 
 Build TensorFlow Lite in some way.
 We recommend forked repo https://github.com/syoyo/tensorflow with cmake build support for TensorFlow Lite(See `tensorflow/tensorflow/lite/tools/make`)
 
-## Build
+### Build
 
 Edit path to TensorFlow-Lite and flatbuffers in `bootstrap-cmake.sh`, then
 
@@ -22,7 +30,7 @@ $ make
 $ cd ..
 ```
 
-## Prepare MNIST dataset
+### Prepare MNIST dataset
 
 Download and extract MINST dataset to `data` directory.
 
@@ -33,7 +41,7 @@ $ ../download-minist.sh
 $ gunzip *.gz
 ```
 
-## Run
+### Run
 
 ```
 $ cd build
