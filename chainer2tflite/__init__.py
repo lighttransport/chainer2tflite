@@ -1,4 +1,7 @@
 import logging
+
+from chainer2tflite.export import export  # NOQA
+
 def get_module_logger(modname):
     logger = logging.getLogger(modname)
     handler = logging.StreamHandler()

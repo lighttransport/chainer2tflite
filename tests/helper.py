@@ -29,7 +29,8 @@ import warnings
 import tensorflow.lite.python
 import pytest
 
-from chainer2tflite.testing.get_test_data_set import gen_test_data_set
+from chainer2tflite.testing.test_data_set import gen_test_data_set
+from chainer2tflite.testing.test_data_set import clean_test_data_set
 
 
 class TFLiteModelTest(unittest.TestCase):
@@ -57,6 +58,10 @@ class TFLiteModelTest(unittest.TestCase):
             test_name = self.default_name
 
         dir_name = 'test_' + test_name
+
+        # Remove previously generated test data for safety.
+        clean_test_data_set(dir_name)
+
         if with_warning:
             with warnings.catch_warnings(record=True) as w:
                 test_path = gen_test_data_set(
@@ -65,7 +70,7 @@ class TFLiteModelTest(unittest.TestCase):
             assert len(w) == 1
         else:
             test_path = gen_test_data_set(
-                model, args, dir_name, opset_version, train, input_names,
+                model, args, dir_name, input_names,
                 output_names)
 
 
@@ -73,4 +78,4 @@ class TFLiteModelTest(unittest.TestCase):
         # from tflite model, and compare with another input list got from
         # test runtime.
         if self.check_out_values is not None:
-            self.check_out_values(test_path, input_names=graph_input_names)
+            self.check_out_values(test_path)

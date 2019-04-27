@@ -42,11 +42,44 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 ### Requirements
 
 * pytest
+* tensorflow(CPU version preferred)
+
+```
+$ pip install pytest
+$ pip install tensorflow
+```
 
 ### Running tests
 
 ```
 $ pytest tests/
+```
+
+#### Note on test data
+
+Input/output test data will be generated in `out` directory.
+Remove this directory if you added/modified unit tests.
+
+### For developers
+
+#### Linting python code
+
+```
+$ pip install hacking flake8-import-order flake8-docstrings
+```
+
+```
+$ flake8
+```
+
+#### Formatting python code
+
+```
+$ pip install yapf
+```
+
+```
+$ yapf <input.py>
 ```
 
 ## Examples
@@ -55,8 +88,12 @@ See `examples` directory.
 
 ## TODO
 
+* [ ] Support multiple inputs/outputs graph.
 * [ ] Android demo
 * [ ] Support TensorFlow-Lite micro(experimental) to run Chainer-trained model on IoT devices
+* [ ] More functions/links, ops, etc
+* [ ] Refactor unit tester
+* [ ] Write tflite model to memory
 
 ## License
 

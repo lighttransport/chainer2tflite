@@ -25,4 +25,3 @@ class TestReLU(TFLiteModelTest):
     def test_output(self):
         self.expect(self.model, self.x)
 
-

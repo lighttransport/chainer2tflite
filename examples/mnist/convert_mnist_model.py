@@ -17,11 +17,11 @@ from chainer import serializers
 from chainer import Link, Chain, ChainList
 
 sys.path.append("../../")
-import chainer2tflite.exporter
+import chainer2tflite
+
 
 # https://docs.chainer.org/en/stable/examples/train_loop.html
 class MyNetwork(Chain):
-
     def __init__(self, n_mid_units=100, n_out=10):
         super(MyNetwork, self).__init__()
         with self.init_scope():
@@ -34,6 +34,7 @@ class MyNetwork(Chain):
         h = F.relu(self.l2(h))
         return self.l3(h)
 
+
 chainer.print_runtime_info()
 
 model = MyNetwork()
@@ -45,4 +46,4 @@ chainer.serializers.load_npz('mnist.model', model)
 x = chainer.Variable(np.zeros((1, 28 * 28), dtype=np.float32), name='input0')
 
 # for some reason, need to pass the array(or tuple) of variables
-chainer2tflite.exporter.export(model, [x], "mnist.tflite")
+chainer2tflite.export(model, [x], "mnist.tflite")
