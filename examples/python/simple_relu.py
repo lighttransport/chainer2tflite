@@ -39,9 +39,7 @@ chainer.print_runtime_info()
 
 model = MyNetwork()
 
-# Must assign name with `input0`
-# The converter interprets this name for input(Placeholder) tensor
-x = chainer.Variable(np.zeros((1, 16), dtype=np.float32), name='input0')
+x = chainer.Variable(np.zeros((1, 16), dtype=np.float32))
 
 # for some reason, need to pass the array(or tuple) of variables
 filename = "relu.tflite"
@@ -74,5 +72,5 @@ assert isinstance(cn_result, np.ndarray)
 # compare result
 np.testing.assert_allclose(cn_result, tfl_result, rtol=1e-5, atol=1e-5)
 
-print('Tada!')
-
+# :tada:
+print('\U0001F389')

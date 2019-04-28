@@ -28,14 +28,23 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 
 ## Supported layers/ops
 
-| Chainer         | tflite           | Comment              |
-| --------------- | ---------------- | -------------------- |
-| Reshape         | RESHAPE          |                      |
-| LinearFunction  | MATMUL           |                      |
-| ReLU            | RELU             |                      |
-| Softmax         | SOFTMAX          |                      |
-| Conv2D          | CONV_2D          |                      |
-| ResizeImages    | RESIZE_BILINEAR  | `align_corners=true` |
+| Chainer         | tflite           | Comment                 |
+| --------------- | ---------------- | ----------------------- |
+| Add             | ADD              | two inputs only         |
+| Reshape         | RESHAPE          |                         |
+| LinearFunction  | FULLY_CONNECTED  | activation=None         |
+| ReLU            | RELU             |                         |
+| ResizeImages    | RESIZE_BILINEAR  | `align_corners=true`    |
+
+### Not supported(or TODO)
+
+* [ ] Conv2D
+* [ ] Deconv2D
+* [ ] FusedBatchNormalization
+* [ ] Absolute and other primitive math expression.
+* [ ] ADD_N
+* [ ] ARG_MAX, ARG_MIN
+* [ ] T.B.W.
 
 ## Tests
 
@@ -88,10 +97,12 @@ See `examples` directory.
 
 ## TODO
 
-* [ ] Support multiple inputs/outputs graph.
-* [ ] Android demo
+* [ ] Automatic handling of NCHW and NHWC conversion.
+* [ ] Support multiple outputs graph.
+* [ ] Android demo(train with Chainer, run tflite on mobile).
 * [ ] Support TensorFlow-Lite micro(experimental) to run Chainer-trained model on IoT devices
 * [ ] More functions/links, ops, etc
+* [ ] Quantized network
 * [ ] Refactor unit tester
 * [ ] Write tflite model to memory
 

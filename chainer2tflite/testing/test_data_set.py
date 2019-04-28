@@ -22,5 +22,5 @@ def clean_test_data_set(name):
     test_path = os.path.join(
         TEST_OUT_DIR, 'tflite', name)
 
-    shutil.rmtree(test_path)
+    shutil.rmtree(test_path, ignore_errors=True)
 

@@ -25,7 +25,9 @@ import tflite.TensorType
 import tflite.Tensor
 import tflite.Model
 from tflite import FullyConnectedOptions, Operator, OperatorCode, BuiltinOperator, BuiltinOptions, SubGraph
+from tflite import AddOptions
 from tflite import ReshapeOptions
+from tflite import ResizeBilinearOptions
 
 # default log format
 default_fmt = logging.Formatter(
@@ -217,13 +219,14 @@ class TensorFlowLiteSerializer:
 
         return (buffer_id, tf_buffer)
 
-    def SerializeTensor(self, name, shape, data):
+    def SerializeTensor(self, name, dtype, shape, data):
         """Serialize Tensor.
 
         Currently we only support Tensor with float32 format.
 
         Args:
             name (string): (Unique) name of Tensor.
+            dtype (numpy.dtype): Tensor data type.
             shape ([int]): Tensor shape information.
             data (chainer.Variable or numpy.ndarray): Tensor data.
                 Create empty tensor when `data` is None
@@ -233,8 +236,15 @@ class TensorFlowLiteSerializer:
         """
 
         # TODO(LTE): Support other types
-        if data is not None:
-            assert data.dtype == 'float32'
+        tf_type = None
+        if dtype == 'float32':
+            tf_type = tflite.TensorType.TensorType.FLOAT32
+        elif dtype == 'int32':
+            tf_type = tflite.TensorType.TensorType.INT32
+        else:
+            print('Unsupported data type :', dtype)
+            raise
+
 
         # Serialize Tensor data: [ubyte]
         if data is not None:
@@ -260,8 +270,7 @@ class TensorFlowLiteSerializer:
         tflite.Tensor.TensorStart(self.builder)
         tflite.Tensor.TensorAddName(self.builder, tf_name)
         tflite.Tensor.TensorAddShape(self.builder, tf_shape)
-        tflite.Tensor.TensorAddType(self.builder,
-                                    tflite.TensorType.TensorType.FLOAT32)
+        tflite.Tensor.TensorAddType(self.builder, tf_type)
         tflite.Tensor.TensorAddBuffer(self.builder, buffer_id)
         tf_tensor = tflite.Tensor.TensorEnd(self.builder)
 
@@ -324,6 +333,125 @@ class TensorFlowLiteSerializer:
         num_inputs = 1
         tflite.Operator.OperatorStartInputsVector(self.builder, num_inputs)
         self.builder.PrependInt32(input_id)
+        inputs = self.builder.EndVector(num_inputs)
+
+        # Outputs
+        num_outputs = 1
+        tflite.Operator.OperatorStartOutputsVector(self.builder, num_outputs)
+        self.builder.PrependInt32(output_id)
+        outputs = self.builder.EndVector(num_outputs)
+
+        tflite.Operator.OperatorStart(self.builder)
+        tflite.Operator.OperatorAddInputs(self.builder, inputs)
+        tflite.Operator.OperatorAddOutputs(self.builder, outputs)
+        tflite.Operator.OperatorAddOpcodeIndex(self.builder, opcode_id)
+        op = tflite.Operator.OperatorEnd(self.builder)
+
+        self.operators.append(op)
+
+        return op
+
+    def SerializeOpResizeImages(self, input_id,
+                                output_id, new_shape_id):
+
+        # NOTE(LTE): Chainer supports bilinear interpolation only.
+        # Map to resize_bilinear + align_corners = true.
+        # For more details about resize_images,
+        # See https://github.com/chainer/onnx-chainer/issues/147
+
+        logger.info(
+            "resize_images. input = {}, output = {}, new_shape = {}".format(
+                input_id, output_id, new_shape_id))
+        opcode_id = self.RegisterBuiltinOpcode(
+            tflite.BuiltinOperator.BuiltinOperator.RESIZE_BILINEAR)
+
+        # Options
+        # (`align_corners` == true) matches the Chainer's result.
+        tflite.ResizeBilinearOptions.ResizeBilinearOptionsStart(self.builder)
+        tflite.ResizeBilinearOptions.ResizeBilinearOptionsAddAlignCorners(self.builder, True)
+        tf_options = tflite.ResizeBilinearOptions.ResizeBilinearOptionsEnd(
+            self.builder)
+
+        # Inputs
+        # new_shape first.
+        num_inputs = 2
+        tflite.Operator.OperatorStartInputsVector(self.builder, num_inputs)
+        self.builder.PrependInt32(new_shape_id)
+        self.builder.PrependInt32(input_id)
+        tf_inputs = self.builder.EndVector(num_inputs)
+
+        # Outputs
+        num_outputs = 1
+        tflite.Operator.OperatorStartOutputsVector(self.builder, num_outputs)
+        self.builder.PrependInt32(output_id)
+        tf_outputs = self.builder.EndVector(num_outputs)
+
+        tflite.Operator.OperatorStart(self.builder)
+        tflite.Operator.OperatorAddInputs(self.builder, tf_inputs)
+        tflite.Operator.OperatorAddOutputs(self.builder, tf_outputs)
+        tflite.Operator.OperatorAddBuiltinOptionsType(
+            self.builder,
+            tflite.BuiltinOptions.BuiltinOptions.ResizeBilinearOptions)
+        tflite.Operator.OperatorAddBuiltinOptions(self.builder, tf_options)
+        logger.debug('opcode_id = {}'.format(opcode_id))
+        tflite.Operator.OperatorAddOpcodeIndex(self.builder, opcode_id)
+        op = tflite.Operator.OperatorEnd(self.builder)
+
+        self.operators.append(op)
+
+        return op
+
+    def SerializeOpAdd(self, x_id, y_id, output_id):
+
+        opcode_id = self.RegisterBuiltinOpcode(
+            tflite.BuiltinOperator.BuiltinOperator.ADD)
+
+        # Inputs
+        num_inputs = 2
+        tflite.Operator.OperatorStartInputsVector(self.builder, num_inputs)
+        self.builder.PrependInt32(y_id)
+        self.builder.PrependInt32(x_id)
+        inputs = self.builder.EndVector(num_inputs)
+
+        # Outputs
+        num_outputs = 1
+        tflite.Operator.OperatorStartOutputsVector(self.builder, num_outputs)
+        self.builder.PrependInt32(output_id)
+        outputs = self.builder.EndVector(num_outputs)
+
+        # Options
+        activation_function = 0  # 'NONE'
+        tflite.AddOptions.AddOptionsStart(self.builder)
+        tflite.AddOptions.AddOptionsAddFusedActivationFunction(
+            self.builder, activation_function)
+        tf_options = tflite.AddOptions.AddOptionsEnd(
+            self.builder)
+
+
+        tflite.Operator.OperatorStart(self.builder)
+        tflite.Operator.OperatorAddInputs(self.builder, inputs)
+        tflite.Operator.OperatorAddOutputs(self.builder, outputs)
+        tflite.Operator.OperatorAddBuiltinOptionsType(
+            self.builder,
+            tflite.BuiltinOptions.BuiltinOptions.AddOptions)
+        tflite.Operator.OperatorAddBuiltinOptions(self.builder, tf_options)
+        tflite.Operator.OperatorAddOpcodeIndex(self.builder, opcode_id)
+        op = tflite.Operator.OperatorEnd(self.builder)
+
+        self.operators.append(op)
+
+        return op
+
+    def SerializeOpSub(self, x_id, y_id, output_id):
+
+        opcode_id = self.RegisterBuiltinOpcode(
+            tflite.BuiltinOperator.BuiltinOperator.SUB)
+
+        # Inputs
+        num_inputs = 2
+        tflite.Operator.OperatorStartInputsVector(self.builder, num_inputs)
+        self.builder.PrependInt32(y_id)
+        self.builder.PrependInt32(x_id)
         inputs = self.builder.EndVector(num_inputs)
 
         # Outputs
@@ -531,6 +659,9 @@ class TensorFlowLiteConverter(object):
         # Will be found during `dump_function_object`
         self.inputs = {}
 
+        # List of input names
+        self.input_names = []
+
     def _get_layer_name(self, layer):
         """Generate layer name like "Convolution2DFunction-10-2".
 
@@ -594,11 +725,11 @@ class TensorFlowLiteConverter(object):
                 I, W, b = func.inputs
 
             # input
-            if I.name == 'input0':
+            if I.name in self.input_names:
                 # Placeholder input
                 input_id = tf_serializer.SerializeTensor(
                     I.name, I.shape, None)
-                self.inputs['input0'] = input_id
+                self.inputs[I.name] = input_id
             elif parent_layer_names[0] == 'data':
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', I.shape, I.data)
@@ -637,16 +768,18 @@ class TensorFlowLiteConverter(object):
 
             assert (len(func.inputs) == 1)
 
+            # TODO(LTE): Support non-float32 type
+
             # input
             I = func.inputs[0]
-            if I.name == 'input0':
+            if I.name in self.input_names:
                 # Placeholder input
                 input_id = tf_serializer.SerializeTensor(
-                    I.name, I.shape, None)
-                self.inputs['input0'] = input_id
+                    I.name, 'float32', I.shape, None)
+                self.inputs[I.name] = input_id
             elif parent_layer_names[0] == 'data':
                 input_id = tf_serializer.SerializeTensor(
-                    layer_name + '_input0', I.shape, I.data)
+                layer_name + '_input0', 'float32', I.shape, I.data)
             else:
                 input_id = tf_serializer.FindConnection(parent_layer_names[0])
                 # There should have valid connection
@@ -659,7 +792,7 @@ class TensorFlowLiteConverter(object):
             _output = func.outputs[0]
             logger.info("output.shape = {}".format(_output().shape))
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
-                                                      _output().shape, None)
+                                                      'float32', _output().shape, None)
             tf_serializer.RegisterConnection(layer_name, output_id)
 
             tf_serializer.SerializeOpReLU(input_id, output_id)
@@ -673,11 +806,11 @@ class TensorFlowLiteConverter(object):
             logger.info('Reshape : {}'.format(new_shape))
 
             I = func.inputs[0]
-            if I.name == 'input0':
+            if I.name in self.input_names:
                 # Placeholder input
                 input_id = tf_serializer.SerializeTensor(
                     I.name, I.shape, None)
-                self.inputs['input0'] = input_id
+                self.inputs[I.name] = input_id
             elif parent_layer_names[0] == 'data':
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', I.shape, I.data)
@@ -696,11 +829,170 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeOpReshape(
                 input_id, output_id, new_shape)
 
+        if func.label == 'ResizeImages':
+
+            # Assume float32 image
+            # TODO(LTE): Support multiple channels
+
+            for _input in func.inputs:
+                logger.info('ResizeImages in %s(id %d)',
+                            self._get_parent_name(_input), id(_input))
+
+            print('resize_images', func.inputs)
+            print('output_shape', func.out_H, func.out_W)
+
+            I = func.inputs[0]
+
+            in_shape = I.shape
+            in_data = I.data
+
+            if len(in_shape) == 4:
+                # Assume NCHW
+                # Apply NHWC conversion
+                in_shape = (I.shape[0], I.shape[2], I.shape[3], I.shape[1])
+                if in_data is not None:
+                    in_data = np.transpose(I.data, (0, 2, 3, 1))
+
+            # input
+            if I.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    I.name, I.dtype, in_shape, None)
+                self.inputs[I.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input0', 'float32', in_shape, in_data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[0]))
+                    raise
+
+            # new_shape(1D tensor with 2 elements)
+            new_shape_name = layer_name + '_new_shape'
+            new_shape_id = tf_serializer.SerializeTensor(new_shape_name,
+                                                 'int32', [2], np.array([func.out_H, func.out_W], dtype=np.int32))
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            print('len(shape) = {}'.format(len(_output().shape)))
+            print('ty(shape) = {}'.format(type(_output().shape)))
+
+            # (batch, C, H, W) -> (batch, H, W, C)
+            output_shape = (_output().shape[0],
+                            _output().shape[2],
+                            _output().shape[3],
+                            _output().shape[1])
+            print('resize_images.out_shape = {}'.format(output_shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      I.dtype, output_shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            tf_serializer.SerializeOpResizeImages(input_id, output_id, new_shape_id)
+
+        elif func.label == '_ + _':
+            # Add
+
+            if len(func.inputs) != 2:
+                logger.fatal('The number of inputs for `Add` op must be two(2) but got got {}'.format(len(func.inputs)))
+
+            for _input in func.inputs:
+                logger.info('Add in %s(id %d)',
+                            self._get_parent_name(_input), id(_input))
+
+            input_ids = []
+
+            for (i, inp) in enumerate(func.inputs):
+                # input
+                if inp.name in self.input_names:
+                    # Placeholder input
+                    input_id = tf_serializer.SerializeTensor(
+                        inp.name, inp.dtype, inp.shape, None)
+                    self.inputs[inp.name] = input_id
+                elif parent_layer_names[i] == 'data':
+                    # Constant
+                    input_id = tf_serializer.SerializeTensor(
+                        layer_name + '_input'.format(i), inp.data.dtype, inp.shape, inp.data)
+                else:
+                    input_id = tf_serializer.FindConnection(parent_layer_names[i])
+                    # There should have valid connection
+                    if input_id is None:
+                        logger.fatal('{} not found in connections'.format(
+                            parent_layer_names[i]))
+                        raise
+
+                input_ids.append(input_id)
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+
+            output_name = layer_name + '_0'
+            output_id = tf_serializer.SerializeTensor(output_name,
+                                                      func.inputs[0].dtype, _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            tf_serializer.SerializeOpAdd(input_ids[0], input_ids[1], output_id)
+
+        elif func.label == '_ - _':
+            # Sub
+
+            if len(func.inputs) != 2:
+                logger.fatal('The number of inputs for `Sub` op must be two(2) but got got {}'.format(len(func.inputs)))
+
+            for _input in func.inputs:
+                logger.info('Sub in %s(id %d)',
+                            self._get_parent_name(_input), id(_input))
+
+            input_ids = []
+
+            for (i, inp) in enumerate(func.inputs):
+                # input
+                if inp.name in self.input_names:
+                    # Placeholder input
+                    input_id = tf_serializer.SerializeTensor(
+                        inp.name, inp.data.dtype, inp.shape, None)
+                    self.inputs[inp.name] = input_id
+                elif parent_layer_names[i] == 'data':
+                    # Constant
+                    input_id = tf_serializer.SerializeTensor(
+                        layer_name + '_input'.format(i), inp.data.dtype, inp.shape, inp.data)
+                else:
+                    input_id = tf_serializer.FindConnection(parent_layer_names[i])
+                    # There should have valid connection
+                    if input_id is None:
+                        logger.fatal('{} not found in connections'.format(
+                            parent_layer_names[i]))
+                        raise
+
+                input_ids.append(input_id)
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+
+            output_name = layer_name + '_0'
+            output_id = tf_serializer.SerializeTensor(output_name,
+                                                      'float32', _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            tf_serializer.SerializeOpSub(input_ids[0], input_ids[1], output_id)
         else:
-            logger.error("Unknown or unsupported function/link : %s",
+            logger.fatal("Unknown or unsupported function/link : %s",
                          func.label)
 
-    def __call__(self, outputs):
+    def __call__(self, _inputs, outputs):
+
+        # register list of input names
+        for _inp in _inputs:
+            assert _inp.name is not None
+            self.input_names.append(_inp.name)
+
+
+        logger.info('input names = {}'.format(self.input_names))
 
         dumped_list = _dump_graph(outputs)
         logger.debug('dumpped_list = %s', dumped_list)
@@ -743,6 +1035,8 @@ class TensorFlowLiteConverter(object):
 def export(model, args, filename):
 
     # forward eval
+
+    # `inputs` contain chainer.Variable with name assigned.
     inputs = []
     if isinstance(args, tuple):
         args = list(args)
@@ -752,7 +1046,13 @@ def export(model, args, filename):
             if isinstance(arg, chainer.get_array_types()):
                 input_name = 'input{}'.format(i)
                 args[i] = chainer.Variable(arg, name=input_name)
-                inputs.append(args[i])
+            else:
+                assert isinstance(arg, chainer.Variable)
+                if args[i].name is None:
+                    # assign name
+                    args[i].name = 'input0'
+
+            inputs.append(args[i])
 
         outputs = model(*args)
     elif isinstance(args, chainer.get_array_types()):
@@ -761,8 +1061,9 @@ def export(model, args, filename):
         outputs = model(args)
 
     elif isinstance(args, chainer.Variable):
-        # Rewrite name
-        args.name = 'input0'
+        if args.name is None:
+            # assign name
+            args.name = 'input0'
         inputs.append(args)
         outputs = model(args)
     else:
@@ -771,15 +1072,27 @@ def export(model, args, filename):
             'numpy array, or Chainer Variable. But a {} object was '
             'given.'.format(type(args)))
 
+    assert len(inputs) > 0
+
+    for inp in inputs:
+        assert inp.name is not None
+        logger.info('DBG: input name = {}'.format(inp.name))
 
     if isinstance(outputs, variable.Variable):
         outputs = [outputs]
     assert isinstance(outputs, (tuple, list))
-    for i in outputs:
-        assert isinstance(i, variable.Variable)
+
+    logger.info('# of outpus = {}'.format(len(outputs)))
+
+    for i, outp in enumerate(outputs):
+        assert isinstance(outp, variable.Variable)
+        if outp.name is None:
+            outp.name = 'output{}'.format(i)
+
+        logger.info('output name[{}] = {}'.format(i, outp.name))
 
     converter = TensorFlowLiteConverter(filename)
-    converter(outputs)
+    converter(inputs, outputs)
 
     # Chainer's result
     return inputs, outputs

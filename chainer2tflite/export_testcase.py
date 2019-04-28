@@ -27,11 +27,11 @@ def export_testcase(model, args, out_dir, **kwargs):
     os.makedirs(test_data_dir, exist_ok=True)
 
 
-    print('inputs = ', len(inputs))
+    # Save as npy format.
+
+    assert isinstance(inputs, list)
     for i, var in enumerate(inputs):
         npy_name = os.path.join(test_data_dir, 'input_{}.npy'.format(i))
-        print('var.name = ', var.name, 'npy name = ', npy_name)
-        #array = chainer.cuda.to_cpu(var.array)
         array = var.array
         np.save(npy_name, array)
 
@@ -39,6 +39,4 @@ def export_testcase(model, args, out_dir, **kwargs):
     for i, var in enumerate(outputs):
         npy_name = os.path.join(test_data_dir, 'output_{}.npy'.format(i))
         array = var.array
-        #array = chainer.cuda.to_cpu(var.array)
-        # Save as npy format.
         np.save(npy_name, array)

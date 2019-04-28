@@ -253,7 +253,9 @@ int main(int argc, char **argv)
     return EXIT_FAILURE;
   }
 
+  std::cout << "============================\n";
   tflite::PrintInterpreterState(interpreter.get());
+  std::cout << "============================\n";
 
   // get input dimension from the input tensor metadata
   // assuming one input only
