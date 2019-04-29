@@ -450,6 +450,59 @@ class TensorFlowLiteConverter(object):
             return 'data'
         return self._get_layer_name(parent_)
 
+    def _insertOpPad(self, tf_serializer, in_name, in_shape, in_dtype, in_data, output_shape, pad_bw, layer_name, parent_layer_name):
+        """Insert Pad op for converting pooling op with padding > 0 in Chainer to tflite.
+        """
+
+        if in_name in self.input_names:
+            # Placeholder input
+            input_id = tf_serializer.SerializeTensor(
+                in_name, in_dtype, in_shape, None)
+            self.inputs[in_name] = input_id
+        elif parent_layer_names[0] == 'data':
+            input_id = tf_serializer.SerializeTensor(
+                layer_name + '_input0', in_shape, in_data)
+        else:
+            input_id = tf_serializer.FindConnection(parent_layer_name)
+            # There should have valid connection
+            if input_id is None:
+                logger.fatal('{} not found in connections'.format(
+                    parent_layer_names[0]))
+                raise
+
+        # create a constant value tensor for padding.
+
+        # tflite = 2D tensor with [begin, end]x ndim. For example:
+        # [[pad0_b, pad0_e],
+        #  [pad1_b, pad1_e],
+        #  [pad2_b, pad2_e],
+        #  [pad3_b, pad3_e]]
+        print('func_pad = ', pad_bw)
+        padding_values = []
+        for pad_bw in pad_bw:
+            if isinstance(pad_bw, np.ndarray):
+                padding_values.append([pad_bw[0], pad_bw[1]])
+            else:
+                padding_values.append([pad_bw, pad_bw])
+
+        print(padding_values)
+
+        # paddig tensor must have same array length for the first axis with input tensor
+        padding = np.array(padding_values, np.int32)
+
+        print('padding.shape = ', padding.shape)
+        print('padding = ', padding)
+        padding_id = tf_serializer.SerializeTensor(
+            layer_name + '_padding', in_dtype, padding.shape, padding)
+
+        # output
+        output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                  in_dtype, output_shape, None)
+        tf_serializer.RegisterConnection(layer_name, output_id)
+
+        serialize_ops.SerializeOpPad(tf_serializer,
+            input_id, output_id, padding_id)
+
     def dump_function_object(self, func, tf_serializer):
 
         assert isinstance(func, _function_types)
@@ -596,7 +649,7 @@ class TensorFlowLiteConverter(object):
 
             activation_function = 'NONE'
 
-            padding = 'VALID' if func.ph == 0 else 'SAME'
+            padding = 'VALID'
             stride = [func.sx, func.sy]
             filter_size = [func.kw, func.kh]
             serialize_ops.SerializeAveragePooling2D(tf_serializer,
@@ -615,15 +668,53 @@ class TensorFlowLiteConverter(object):
             assert len(func.inputs) == 1
 
             I = func.inputs[0]
-
+            in_name = I.name
+            in_dtype = I.dtype
             in_shape = I.shape
             in_data = I.data
+
             if len(in_shape) == 4:
                 # Assume NCHW
                 # Apply NHWC conversion
                 in_shape = (I.shape[0], I.shape[2], I.shape[3], I.shape[1])
                 if in_data is not None:
                     in_data = np.transpose(I.data, (0, 2, 3, 1))
+
+            parent_layer_name = parent_layer_names[0]
+
+            # padding > 0 in Chaier requires `Pad` + `MaxPooling2D` in tflite.
+            assert func.ph == func.pw   # TODO(LTE): Support ph != pw case
+            if (func.ph > 0) or (func.pw > 0):
+                # Insert `Pad` op
+
+                _layer_name = in_name + '_pad'
+                pad_bw = []
+
+                if len(in_shape) == 4:
+                    # NHWC
+                    _output_shape = [sum(x) for x in zip(in_shape, [0, 2 * func.ph, 2 * func.pw, 0])]
+                    pad_bw.append([0, 0])
+                    pad_bw.append([func.ph, func.ph])
+                    pad_bw.append([func.pw, func.pw])
+                    pad_bw.append([0, 0])
+                elif len(in_shape) == 3:
+                    # HWC
+                    _output_shape = [sum(x) for x in zip(in_shape, [2 * func.ph, 2 * func.pw, 0])]
+                    pad_bw.append([func.ph, func.ph])
+                    pad_bw.append([func.pw, func.pw])
+                    pad_bw.append([0, 0])
+                else:
+                    _output_shape = [sum(x) for x in zip(in_shape, [2 * func.ph, 2 * func.pw, 0])]
+                    pad_bw.append([func.ph, func.ph])
+                    pad_bw.append([func.pw, func.pw])
+
+
+
+                self._insertOpPad(tf_serializer, in_name, in_shape, in_dtype, in_data, _output_shape, pad_bw, _layer_name, parent_layer_names[0])
+
+                # rewrite parent name to OpPad's name
+                parent_layer_name = _layer_name
+
 
             # input
             if I.name in self.input_names:
@@ -635,7 +726,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', I.dtype, in_shape, in_data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindConnection(parent_layer_name)
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -664,15 +755,11 @@ class TensorFlowLiteConverter(object):
 
             # options
 
-            # Padding must be same for both axis.
-            assert func.ph == func.pw
-
-            # Padding must be 0 or 1
-            assert func.ph == 0 or func.ph == 1
 
             activation_function = 'NONE'
 
-            padding = 'VALID' if func.ph == 0 else 'SAME'
+            # Padding is always `VALID`
+            padding = 'VALID'
             stride = [func.sx, func.sy]
             filter_size = [func.kw, func.kh]
             serialize_ops.SerializeMaxPooling2D(tf_serializer,
