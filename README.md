@@ -22,24 +22,37 @@ Python binding of tflite schema(version 3) is already added to `tflite` director
 If you want to re-generate python binding from tflite schema, use `flatc` to generate it:
 
 ```
+# in `chainer2tflite` directory,
 $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 ```
 
 
 ## Supported layers/ops
 
-| Chainer         | tflite           | Comment                 |
-| --------------- | ---------------- | ----------------------- |
-| Add             | ADD              | two inputs only         |
-| Reshape         | RESHAPE          |                         |
-| LinearFunction  | FULLY_CONNECTED  | activation=None         |
-| ReLU            | RELU             |                         |
-| ResizeImages    | RESIZE_BILINEAR  | `align_corners=true`    |
+| Chainer          | tflite           | Comment                                  |
+| ---------------- | ---------------- | ---------------------------------------- |
+| Add              | ADD              | two inputs only                          |
+| Reshape          | RESHAPE          |                                          |
+| LinearFunction   | FULLY_CONNECTED  | activation=None                          |
+| ReLU             | RELU             |                                          |
+| ResizeImages     | RESIZE_BILINEAR  | `align_corners=true`                     |
+| Pad              | PADV2            | Padding value is constant zero(0) only   |
+| AveragePooling2D | AVERAGE_POOL_2D  |                                          |
+| MaxPooling2D     | MAX_POOL_2D      |                                          |
 
 ### Not supported(or TODO)
 
+* [ ] hstack
+* [ ] split_axis
+* [ ] sqrt
+* [ ] mean
+* [ ] mean_squared_error
+* [ ] Concat
+* [ ] Dropout
 * [ ] Conv2D
+* [ ] DialatedConvolution2D
 * [ ] Deconv2D
+* [ ] BatchNormalization
 * [ ] FusedBatchNormalization
 * [ ] Absolute and other primitive math expression.
 * [ ] ADD_N

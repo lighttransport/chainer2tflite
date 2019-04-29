@@ -102,12 +102,12 @@ def check_model_expect(test_path, input_names=None):
 
         # Set input tensors
         for ref_name, ref_value in inputs.items():
+            print('{}.shape = {}'.format(ref_name, ref_value.shape))
 
             if len(ref_value.shape) == 4:
                 # Assume (batch, C, H, W)
                 # Convert to (batch, H, W, C)(TensorFlow's default)
                 ref_value = np.transpose(ref_value, (0, 2, 3, 1))
-                print('shape = ', ref_value.shape)
 
             # Simple linear search
             found = False
@@ -128,6 +128,9 @@ def check_model_expect(test_path, input_names=None):
         print('tflite out', rt_out)
 
         cn_out = outputs[rt_output_names[0]]
+
+        print('cn out shape = ', cn_out.shape)
+
 
         if len(rt_out.shape) == 4:
             # Convert to NCHW for comparison with Chainer's result
