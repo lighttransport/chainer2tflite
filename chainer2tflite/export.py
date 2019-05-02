@@ -249,7 +249,6 @@ class TensorFlowLiteSerializer:
             print('Unsupported data type :', dtype)
             raise
 
-
         # Serialize Tensor data: [ubyte]
         if data is not None:
             # Sequentially assign buffer id.
@@ -282,7 +281,6 @@ class TensorFlowLiteSerializer:
         self.tensors.append(tf_tensor)
 
         return tensor_id
-
 
     def SerializeSubGraph(self, inputs, outputs):
         """Serialize SubGraph.
@@ -450,18 +448,19 @@ class TensorFlowLiteConverter(object):
             return 'data'
         return self._get_layer_name(parent_)
 
-    def _insertOpPad(self, tf_serializer, in_name, in_shape, in_dtype, in_data, output_shape, pad_bw, layer_name, parent_layer_name):
+    def _insertOpPad(self, tf_serializer, in_name, in_shape, in_dtype, in_data,
+                     output_shape, pad_bw, pad_value, layer_name, parent_layer_name):
         """Insert Pad op for converting pooling op with padding > 0 in Chainer to tflite.
         """
 
         if in_name in self.input_names:
             # Placeholder input
-            input_id = tf_serializer.SerializeTensor(
-                in_name, in_dtype, in_shape, None)
+            input_id = tf_serializer.SerializeTensor(in_name, in_dtype,
+                                                     in_shape, None)
             self.inputs[in_name] = input_id
         elif parent_layer_names[0] == 'data':
-            input_id = tf_serializer.SerializeTensor(
-                layer_name + '_input0', in_shape, in_data)
+            input_id = tf_serializer.SerializeTensor(layer_name + '_input0',
+                                                     in_shape, in_data)
         else:
             input_id = tf_serializer.FindConnection(parent_layer_name)
             # There should have valid connection
@@ -470,7 +469,7 @@ class TensorFlowLiteConverter(object):
                     parent_layer_names[0]))
                 raise
 
-        # create a constant value tensor for padding.
+        # create a tensor for padding.
 
         # tflite = 2D tensor with [begin, end]x ndim. For example:
         # [[pad0_b, pad0_e],
@@ -479,29 +478,42 @@ class TensorFlowLiteConverter(object):
         #  [pad3_b, pad3_e]]
         print('func_pad = ', pad_bw)
         padding_values = []
-        for pad_bw in pad_bw:
-            if isinstance(pad_bw, np.ndarray):
-                padding_values.append([pad_bw[0], pad_bw[1]])
+        for ps in pad_bw:
+            if isinstance(ps, np.ndarray):
+                padding_values.append([ps[0], ps[1]])
+            elif isinstance(ps, list) or isinstance(ps, tuple):
+                padding_values.append([ps[0], ps[1]])
             else:
-                padding_values.append([pad_bw, pad_bw])
+                # Should be int-typed value
+                assert type(ps) == int
+                padding_values.append([ps, ps])
 
-        print(padding_values)
+        print('padding values = ', padding_values)
 
         # paddig tensor must have same array length for the first axis with input tensor
         padding = np.array(padding_values, np.int32)
 
         print('padding.shape = ', padding.shape)
         print('padding = ', padding)
-        padding_id = tf_serializer.SerializeTensor(
-            layer_name + '_padding', in_dtype, padding.shape, padding)
+        padding_id = tf_serializer.SerializeTensor(layer_name + '_padding',
+                                                   in_dtype, padding.shape,
+                                                   padding)
+
+        constant_id = -1
+        if abs(float(pad_value)) > 1e-6:
+            # create a constant value tensor used for padding value.
+            constant_value = np.array([pad_value], np.float32)
+            constant_id = tf_serializer.SerializeTensor(layer_name + '_constant_value',
+                                                       constant_value.dtype, constant_value.shape,
+                                                       constant_value)
 
         # output
-        output_id = tf_serializer.SerializeTensor(layer_name + '_0',
-                                                  in_dtype, output_shape, None)
+        output_id = tf_serializer.SerializeTensor(layer_name + '_0', in_dtype,
+                                                  output_shape, None)
         tf_serializer.RegisterConnection(layer_name, output_id)
 
-        serialize_ops.SerializeOpPad(tf_serializer,
-            input_id, output_id, padding_id)
+        serialize_ops.SerializeOpPad(tf_serializer, input_id, output_id,
+                                     padding_id, constant_id)
 
     def dump_function_object(self, func, tf_serializer):
 
@@ -536,19 +548,19 @@ class TensorFlowLiteConverter(object):
 
             b = None
             if len(func.inputs) == 2:
-                I, W = func.inputs
+                inp, W = func.inputs
             else:  # guess 3
-                I, W, b = func.inputs
+                inp, W, b = func.inputs
 
             # input
-            if I.name in self.input_names:
+            if inp.name in self.input_names:
                 # Placeholder input
                 input_id = tf_serializer.SerializeTensor(
-                    I.name, I.dtype, I.shape, None)
-                self.inputs[I.name] = input_id
+                    inp.name, inp.dtype, inp.shape, None)
+                self.inputs[inp.name] = input_id
             elif parent_layer_names[0] == 'data':
                 input_id = tf_serializer.SerializeTensor(
-                    layer_name + '_input0', I.dtype, I.shape, I.data)
+                    layer_name + '_input0', inp.dtype, inp.shape, inp.data)
             else:
                 input_id = tf_serializer.FindConnection(parent_layer_names[0])
                 # There should have valid connection
@@ -572,13 +584,207 @@ class TensorFlowLiteConverter(object):
             _output = func.outputs[0]
             logger.info("output.shape = {}".format(_output().shape))
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
-                                                      I.dtype, _output().shape, None)
+                                                      inp.dtype,
+                                                      _output().shape, None)
             tf_serializer.RegisterConnection(layer_name, output_id)
 
             activation_function = 'NONE'
-            serialize_ops.SerializeOpFullyConnected(tf_serializer, activation_function,
+            serialize_ops.SerializeOpFullyConnected(tf_serializer,
+                                                    activation_function,
                                                     input_id, output_id, W_id,
                                                     b_id)
+
+        elif func.label == 'Convolution2DFunction':
+            for _input in func.inputs:
+                logger.info('Convolution2DFunction in %s(id %d)',
+                            self._get_parent_name(_input), id(_input))
+
+            assert len(func.inputs) > 2
+
+            inp = func.inputs[0]
+            in_name = inp.name
+            in_dtype = inp.dtype
+            in_shape = inp.shape
+            in_data = inp.data
+
+            print('out shape = ', func.outputs[0]().shape)
+
+            # filter
+            # shape = [outC, inC, kh, kw]
+            filt = func.inputs[1]
+            filt_dtype = func.inputs[1].dtype
+            filt_shape = func.inputs[1].shape
+            filt_data = func.inputs[1].data
+
+            out_channels = filt.shape[0]
+            in_channels = filt.shape[1]
+
+            # Assume NCHW
+            # Apply NHWC conversion
+            in_shape = (inp.shape[0], inp.shape[2], inp.shape[3], inp.shape[1])
+            if in_data is not None:
+                in_data = np.transpose(inp.data, (0, 2, 3, 1))
+
+            # Apply [outC, inC, kh, kw] -> [outC, kh, kw, inC] conversion
+            filt_shape = (out_channels, filt.shape[2], filt.shape[3],
+                          in_channels)
+            filt_data = np.transpose(filt.data, (0, 2, 3, 1))
+
+            parent_layer_name = parent_layer_names[0]
+
+            pad_required = True
+            tf_padding_mode = 'VALID'
+            print('func, pad = ', func.ph, func.pw)
+            print('filt_shape = ', filt.shape[2:])
+
+            # TODO(LTE): Support uneven padding
+            assert func.ph == func.pw
+
+            if (func.ph == 0) and (func.pw == 0):
+                pad_required = False
+            elif (func.ph == 1) and (func.pw == 1):
+                if (filt_shape[2] == 3) and (filt_shape[3] == 3):
+                    # zero padding with padding width 1.
+                    # We can use 'SAME' padding mode in tflite.
+                    pad_required = False
+                    tf_padding_mode = 'SAME'
+
+
+            if pad_required:
+                # Insert `Pad` op
+
+                _layer_name = in_name + '_pad'
+                pad_bw = []
+
+                if len(in_shape) == 4:
+                    # NHWC
+                    _output_shape = [
+                        sum(x) for x in zip(in_shape,
+                                            [0, 2 * func.ph, 2 * func.pw, 0])
+                    ]
+                    pad_bw.append([0, 0])
+                    pad_bw.append([func.ph, func.ph])
+                    pad_bw.append([func.pw, func.pw])
+                    pad_bw.append([0, 0])
+                elif len(in_shape) == 3:
+                    # HWC
+                    _output_shape = [
+                        sum(x)
+                        for x in zip(in_shape, [2 * func.ph, 2 * func.pw, 0])
+                    ]
+                    pad_bw.append([func.ph, func.ph])
+                    pad_bw.append([func.pw, func.pw])
+                    pad_bw.append([0, 0])
+                else:
+                    _output_shape = [
+                        sum(x)
+                        for x in zip(in_shape, [2 * func.ph, 2 * func.pw, 0])
+                    ]
+                    pad_bw.append([func.ph, func.ph])
+                    pad_bw.append([func.pw, func.pw])
+
+                print('pad output shape = ', _output_shape)
+
+                # padding constant value for conv2 is 0.0.
+                pad_value = 0.0
+
+                self._insertOpPad(tf_serializer, in_name, in_shape, in_dtype,
+                                  in_data, _output_shape, pad_bw, pad_value, _layer_name,
+                                  parent_layer_names[0])
+
+                # rewrite parent name to OpPad's name
+                parent_layer_name = _layer_name
+
+
+                # Connect to Pad's output
+                input_id = tf_serializer.FindConnection(parent_layer_name)
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_name))
+                    raise
+
+            else:
+                # input
+                if inp.name in self.input_names:
+                    # Placeholder input
+                    input_id = tf_serializer.SerializeTensor(
+                        inp.name, inp.dtype, in_shape, None)
+                    self.inputs[inp.name] = input_id
+                elif parent_layer_names[0] == 'data':
+                    input_id = tf_serializer.SerializeTensor(
+                        layer_name + '_input0', inp.dtype, in_shape, in_data)
+                else:
+                    input_id = tf_serializer.FindConnection(parent_layer_name)
+                    # There should have valid connection
+                    if input_id is None:
+                        logger.fatal('{} not found in connections'.format(
+                            parent_layer_names[0]))
+                        raise
+
+
+            # filter
+            filter_id = tf_serializer.SerializeTensor(parent_layer_names[1],
+                                                      filt_dtype, filt_shape,
+                                                      filt_data)
+
+            # bias
+            b = None
+            if len(func.inputs) > 2:
+                b = func.inputs[2]
+
+            # Even though bias is optional in tflite,
+            # it looks tflite runtime expects a valid bias tensor.
+            # thus create zero valud bias tensor if required.
+            bias_id = -1
+            if (b is not None) and (b.data is not None):
+                bias_id = tf_serializer.SerializeTensor(
+                    parent_layer_names[2], b.dtype, b.shape, b.data)
+            else:
+                # Bias is 1D tensor with size `outC`
+                bias_shape = [out_channels]
+                bias_data = np.zeros(bias_shape, dtype=inp.dtype)
+
+                bias_id = tf_serializer.SerializeTensor(
+                    layer_name + '_bias', inp.dtype, bias_shape, bias_data)
+
+            # output
+            _output = func.outputs[0]
+
+            output_shape = _output().shape
+
+            # NCHW -> NHWC
+            output_shape = (_output().shape[0], _output().shape[2],
+                            _output().shape[3], _output().shape[1])
+
+            logger.info("conv2d.output.shape = {}".format(output_shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      in_dtype, output_shape,
+                                                      None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            # options
+            activation_function = 'NONE'
+
+            stride = [func.sx, func.sy]
+
+            # W, H
+            dilations = [1, 1]
+
+            if hasattr(func, 'dy') and hasattr(func, 'dx'):
+                dilations[0] = func.dx
+                dilations[1] = func.dy
+
+            print('padding mode', tf_padding_mode)
+            print('stride', stride)
+            print('dilations', dilations)
+
+            assert dilations[0] >= 1 and dilations[1] >= 1
+
+            serialize_ops.SerializeConv2D(tf_serializer, input_id, filter_id,
+                                          bias_id, output_id,
+                                          activation_function, tf_padding_mode,
+                                          stride, dilations)
 
         elif func.label == 'AveragePooling2D':
             #
@@ -591,34 +797,105 @@ class TensorFlowLiteConverter(object):
 
             assert len(func.inputs) == 1
 
-            I = func.inputs[0]
+            inp = func.inputs[0]
 
-            in_shape = I.shape
-            in_data = I.data
+            in_name = inp.name
+            in_dtype = inp.dtype
+            in_shape = inp.shape
+            in_data = inp.data
+
             if len(in_shape) == 4:
                 # Assume NCHW
                 # Apply NHWC conversion
-                in_shape = (I.shape[0], I.shape[2], I.shape[3], I.shape[1])
+                in_shape = (inp.shape[0], inp.shape[2], inp.shape[3],
+                            inp.shape[1])
                 if in_data is not None:
-                    in_data = np.transpose(I.data, (0, 2, 3, 1))
+                    in_data = np.transpose(inp.data, (0, 2, 3, 1))
 
-            # input
-            if I.name in self.input_names:
-                # Placeholder input
-                input_id = tf_serializer.SerializeTensor(
-                    I.name, I.dtype, in_shape, None)
-                self.inputs[I.name] = input_id
-            elif parent_layer_names[0] == 'data':
-                input_id = tf_serializer.SerializeTensor(
-                    layer_name + '_input0', I.dtype, in_shape, in_data)
-            else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+
+            parent_layer_name = parent_layer_names[0]
+
+            pad_required = True
+            tf_padding_mode = 'VALID'
+
+            # TODO(LTE): Support uneven padding
+            assert func.ph == func.pw
+
+            if (func.ph == 0) and (func.pw == 0):
+                pad_required = False
+
+
+            if pad_required:
+                # Insert `Pad` op
+
+                _layer_name = in_name + '_pad'
+                pad_bw = []
+
+                if len(in_shape) == 4:
+                    # NHWC
+                    _output_shape = [
+                        sum(x) for x in zip(in_shape,
+                                            [0, 2 * func.ph, 2 * func.pw, 0])
+                    ]
+                    pad_bw.append([0, 0])
+                    pad_bw.append([func.ph, func.ph])
+                    pad_bw.append([func.pw, func.pw])
+                    pad_bw.append([0, 0])
+                elif len(in_shape) == 3:
+                    # HWC
+                    _output_shape = [
+                        sum(x)
+                        for x in zip(in_shape, [2 * func.ph, 2 * func.pw, 0])
+                    ]
+                    pad_bw.append([func.ph, func.ph])
+                    pad_bw.append([func.pw, func.pw])
+                    pad_bw.append([0, 0])
+                else:
+                    _output_shape = [
+                        sum(x)
+                        for x in zip(in_shape, [2 * func.ph, 2 * func.pw, 0])
+                    ]
+                    pad_bw.append([func.ph, func.ph])
+                    pad_bw.append([func.pw, func.pw])
+
+                print('pad output shape = ', _output_shape)
+
+                # constant value for ave pooling is 0.0
+                pad_value = 0.0
+
+                self._insertOpPad(tf_serializer, in_name, in_shape, in_dtype,
+                                  in_data, _output_shape, pad_bw, pad_value, _layer_name,
+                                  parent_layer_names[0])
+
+                # rewrite parent name to OpPad's name
+                parent_layer_name = _layer_name
+
+
+                # Connect to Pad's output
+                input_id = tf_serializer.FindConnection(parent_layer_name)
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
-                        parent_layer_names[0]))
+                        parent_layer_name))
                     raise
 
+            else:
+                # input
+                if inp.name in self.input_names:
+                    # Placeholder input
+                    input_id = tf_serializer.SerializeTensor(
+                        inp.name, inp.dtype, in_shape, None)
+                    self.inputs[inp.name] = input_id
+                elif parent_layer_names[0] == 'data':
+                    input_id = tf_serializer.SerializeTensor(
+                        layer_name + '_input0', inp.dtype, in_shape, in_data)
+                else:
+                    input_id = tf_serializer.FindConnection(parent_layer_name)
+                    # There should have valid connection
+                    if input_id is None:
+                        logger.fatal('{} not found in connections'.format(
+                            parent_layer_names[0]))
+                        raise
 
             # output
             _output = func.outputs[0]
@@ -627,34 +904,29 @@ class TensorFlowLiteConverter(object):
 
             if len(output_shape) == 4:
                 # NCHW -> NHWC
-                output_shape = (
-                            _output().shape[0],
-                            _output().shape[2],
-                            _output().shape[3],
-                            _output().shape[1])
+                output_shape = (_output().shape[0], _output().shape[2],
+                                _output().shape[3], _output().shape[1])
 
             #print("average_pool_2d.output.shape = {}".format(output_shape))
-            logger.info("average_pool_2d.output.shape = {}".format(output_shape))
+            logger.info(
+                "average_pool_2d.output.shape = {}".format(output_shape))
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
-                                                      I.dtype,output_shape, None)
+                                                      inp.dtype, output_shape,
+                                                      None)
             tf_serializer.RegisterConnection(layer_name, output_id)
 
             # options
-
-            # Padding must be same for both axis.
-            assert func.ph == func.pw
-
-            # Padding must be 0 or 1
-            assert func.ph == 0 or func.ph == 1
 
             activation_function = 'NONE'
 
             padding = 'VALID'
             stride = [func.sx, func.sy]
             filter_size = [func.kw, func.kh]
-            serialize_ops.SerializeAveragePooling2D(tf_serializer,
-                                                    input_id, output_id, activation_function,
-                                                    padding, stride, filter_size)
+            serialize_ops.SerializeAveragePooling2D(tf_serializer, input_id,
+                                                    output_id,
+                                                    activation_function,
+                                                    padding, stride,
+                                                    filter_size)
 
         elif func.label == 'MaxPooling2D':
             #
@@ -667,24 +939,33 @@ class TensorFlowLiteConverter(object):
 
             assert len(func.inputs) == 1
 
-            I = func.inputs[0]
-            in_name = I.name
-            in_dtype = I.dtype
-            in_shape = I.shape
-            in_data = I.data
+            inp = func.inputs[0]
+            in_name = inp.name
+            in_dtype = inp.dtype
+            in_shape = inp.shape
+            in_data = inp.data
 
             if len(in_shape) == 4:
                 # Assume NCHW
                 # Apply NHWC conversion
-                in_shape = (I.shape[0], I.shape[2], I.shape[3], I.shape[1])
+                in_shape = (inp.shape[0], inp.shape[2], inp.shape[3],
+                            inp.shape[1])
                 if in_data is not None:
-                    in_data = np.transpose(I.data, (0, 2, 3, 1))
+                    in_data = np.transpose(inp.data, (0, 2, 3, 1))
 
             parent_layer_name = parent_layer_names[0]
 
-            # padding > 0 in Chaier requires `Pad` + `MaxPooling2D` in tflite.
-            assert func.ph == func.pw   # TODO(LTE): Support ph != pw case
-            if (func.ph > 0) or (func.pw > 0):
+            pad_required = True
+            tf_padding_mode = 'VALID'
+
+            # TODO(LTE): Support uneven padding
+            assert func.ph == func.pw
+
+            if (func.ph == 0) and (func.pw == 0):
+                pad_required = False
+
+
+            if pad_required:
                 # Insert `Pad` op
 
                 _layer_name = in_name + '_pad'
@@ -692,47 +973,69 @@ class TensorFlowLiteConverter(object):
 
                 if len(in_shape) == 4:
                     # NHWC
-                    _output_shape = [sum(x) for x in zip(in_shape, [0, 2 * func.ph, 2 * func.pw, 0])]
+                    _output_shape = [
+                        sum(x) for x in zip(in_shape,
+                                            [0, 2 * func.ph, 2 * func.pw, 0])
+                    ]
                     pad_bw.append([0, 0])
                     pad_bw.append([func.ph, func.ph])
                     pad_bw.append([func.pw, func.pw])
                     pad_bw.append([0, 0])
                 elif len(in_shape) == 3:
                     # HWC
-                    _output_shape = [sum(x) for x in zip(in_shape, [2 * func.ph, 2 * func.pw, 0])]
+                    _output_shape = [
+                        sum(x)
+                        for x in zip(in_shape, [2 * func.ph, 2 * func.pw, 0])
+                    ]
                     pad_bw.append([func.ph, func.ph])
                     pad_bw.append([func.pw, func.pw])
                     pad_bw.append([0, 0])
                 else:
-                    _output_shape = [sum(x) for x in zip(in_shape, [2 * func.ph, 2 * func.pw, 0])]
+                    _output_shape = [
+                        sum(x)
+                        for x in zip(in_shape, [2 * func.ph, 2 * func.pw, 0])
+                    ]
                     pad_bw.append([func.ph, func.ph])
                     pad_bw.append([func.pw, func.pw])
 
+                print('pad output shape = ', _output_shape)
 
+                # constant value for max pooling is -inf.
+                pad_value = -np.inf
 
-                self._insertOpPad(tf_serializer, in_name, in_shape, in_dtype, in_data, _output_shape, pad_bw, _layer_name, parent_layer_names[0])
+                self._insertOpPad(tf_serializer, in_name, in_shape, in_dtype,
+                                  in_data, _output_shape, pad_bw, pad_value, _layer_name,
+                                  parent_layer_names[0])
 
                 # rewrite parent name to OpPad's name
                 parent_layer_name = _layer_name
 
 
-            # input
-            if I.name in self.input_names:
-                # Placeholder input
-                input_id = tf_serializer.SerializeTensor(
-                    I.name, I.dtype, in_shape, None)
-                self.inputs[I.name] = input_id
-            elif parent_layer_names[0] == 'data':
-                input_id = tf_serializer.SerializeTensor(
-                    layer_name + '_input0', I.dtype, in_shape, in_data)
-            else:
+                # Connect to Pad's output
                 input_id = tf_serializer.FindConnection(parent_layer_name)
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
-                        parent_layer_names[0]))
+                        parent_layer_name))
                     raise
 
+            else:
+                # input
+                if inp.name in self.input_names:
+                    # Placeholder input
+                    input_id = tf_serializer.SerializeTensor(
+                        inp.name, inp.dtype, in_shape, None)
+                    self.inputs[inp.name] = input_id
+                elif parent_layer_names[0] == 'data':
+                    input_id = tf_serializer.SerializeTensor(
+                        layer_name + '_input0', inp.dtype, in_shape, in_data)
+                else:
+                    input_id = tf_serializer.FindConnection(parent_layer_name)
+                    # There should have valid connection
+                    if input_id is None:
+                        logger.fatal('{} not found in connections'.format(
+                            parent_layer_names[0]))
+                        raise
 
             # output
             _output = func.outputs[0]
@@ -741,30 +1044,25 @@ class TensorFlowLiteConverter(object):
 
             if len(output_shape) == 4:
                 # NCHW -> NHWC
-                output_shape = (
-                            _output().shape[0],
-                            _output().shape[2],
-                            _output().shape[3],
-                            _output().shape[1])
+                output_shape = (_output().shape[0], _output().shape[2],
+                                _output().shape[3], _output().shape[1])
 
             #print("average_pool_2d.output.shape = {}".format(output_shape))
             logger.info("max_pool_2d.output.shape = {}".format(output_shape))
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
-                                                      I.dtype,output_shape, None)
+                                                      inp.dtype, output_shape,
+                                                      None)
             tf_serializer.RegisterConnection(layer_name, output_id)
 
             # options
 
-
             activation_function = 'NONE'
 
-            # Padding is always `VALID`
-            padding = 'VALID'
             stride = [func.sx, func.sy]
             filter_size = [func.kw, func.kh]
-            serialize_ops.SerializeMaxPooling2D(tf_serializer,
-                                                    input_id, output_id, activation_function,
-                                                    padding, stride, filter_size)
+            serialize_ops.SerializeMaxPooling2D(tf_serializer, input_id,
+                                                output_id, activation_function,
+                                                tf_padding_mode, stride, filter_size)
         elif func.label == 'ReLU':
 
             assert (len(func.inputs) == 1)
@@ -772,15 +1070,15 @@ class TensorFlowLiteConverter(object):
             # TODO(LTE): Support non-float32 type
 
             # input
-            I = func.inputs[0]
-            if I.name in self.input_names:
+            inp = func.inputs[0]
+            if inp.name in self.input_names:
                 # Placeholder input
                 input_id = tf_serializer.SerializeTensor(
-                    I.name, 'float32', I.shape, None)
-                self.inputs[I.name] = input_id
+                    inp.name, 'float32', inp.shape, None)
+                self.inputs[inp.name] = input_id
             elif parent_layer_names[0] == 'data':
                 input_id = tf_serializer.SerializeTensor(
-                layer_name + '_input0', 'float32', I.shape, I.data)
+                    layer_name + '_input0', 'float32', inp.shape, inp.data)
             else:
                 input_id = tf_serializer.FindConnection(parent_layer_names[0])
                 # There should have valid connection
@@ -793,7 +1091,8 @@ class TensorFlowLiteConverter(object):
             _output = func.outputs[0]
             logger.info("output.shape = {}".format(_output().shape))
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
-                                                      'float32', _output().shape, None)
+                                                      'float32',
+                                                      _output().shape, None)
             tf_serializer.RegisterConnection(layer_name, output_id)
 
             serialize_ops.SerializeOpReLU(tf_serializer, input_id, output_id)
@@ -819,21 +1118,21 @@ class TensorFlowLiteConverter(object):
 
             if (values > 1e-5) or (values < -1e-5):
                 raise ValueError(
-                    'tflite doesn\'t support padding constant value other than zero')
-
+                    'tflite doesn\'t support padding constant value other than zero'
+                )
 
             new_shape = func.outputs[0]().shape
             print('pad new_shape = ', new_shape)
 
-            I = func.inputs[0]
-            in_shape = I.shape
-            in_data = I.data
+            inp = func.inputs[0]
+            in_shape = inp.shape
+            in_data = inp.data
 
-            if I.name in self.input_names:
+            if inp.name in self.input_names:
                 # Placeholder input
                 input_id = tf_serializer.SerializeTensor(
-                    I.name, I.dtype, in_shape, None)
-                self.inputs[I.name] = input_id
+                    inp.name, inp.dtype, in_shape, None)
+                self.inputs[inp.name] = input_id
             elif parent_layer_names[0] == 'data':
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', in_shape, in_data)
@@ -867,18 +1166,18 @@ class TensorFlowLiteConverter(object):
 
             print('padding.shape = ', padding.shape)
             print('padding = ', padding)
-            padding_id = tf_serializer.SerializeTensor(
-                layer_name + '_padding', I.dtype, padding.shape, padding)
+            padding_id = tf_serializer.SerializeTensor(layer_name + '_padding',
+                                                       inp.dtype,
+                                                       padding.shape, padding)
 
             # output
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
-                                                      I.dtype, new_shape, None)
+                                                      inp.dtype, new_shape,
+                                                      None)
             tf_serializer.RegisterConnection(layer_name, output_id)
 
-
-            serialize_ops.SerializeOpPad(tf_serializer,
-                input_id, output_id, padding_id)
-
+            serialize_ops.SerializeOpPad(tf_serializer, input_id, output_id,
+                                         padding_id)
 
         elif func.label == 'Reshape':
 
@@ -888,15 +1187,15 @@ class TensorFlowLiteConverter(object):
 
             logger.info('Reshape : {}'.format(new_shape))
 
-            I = func.inputs[0]
-            if I.name in self.input_names:
+            inp = func.inputs[0]
+            if inp.name in self.input_names:
                 # Placeholder input
                 input_id = tf_serializer.SerializeTensor(
-                    I.name, I.dtype, I.shape, None)
-                self.inputs[I.name] = input_id
+                    inp.name, inp.dtype, inp.shape, None)
+                self.inputs[inp.name] = input_id
             elif parent_layer_names[0] == 'data':
                 input_id = tf_serializer.SerializeTensor(
-                    layer_name + '_input0', I.dtype, I.shape, I.data)
+                    layer_name + '_input0', inp.dtype, inp.shape, inp.data)
             else:
                 input_id = tf_serializer.FindConnection(parent_layer_names[0])
                 # There should have valid connection
@@ -907,10 +1206,11 @@ class TensorFlowLiteConverter(object):
 
             # output
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
-                                                      I.dtype, new_shape, None)
+                                                      inp.dtype, new_shape,
+                                                      None)
             tf_serializer.RegisterConnection(layer_name, output_id)
-            serialize_ops.SerializeOpReshape(tf_serializer,
-                input_id, output_id, new_shape)
+            serialize_ops.SerializeOpReshape(tf_serializer, input_id,
+                                             output_id, new_shape)
 
         elif func.label == 'ResizeImages':
 
@@ -924,24 +1224,25 @@ class TensorFlowLiteConverter(object):
             print('resize_images', func.inputs)
             print('output_shape', func.out_H, func.out_W)
 
-            I = func.inputs[0]
+            inp = func.inputs[0]
 
-            in_shape = I.shape
-            in_data = I.data
+            in_shape = inp.shape
+            in_data = inp.data
 
             if len(in_shape) == 4:
                 # Assume NCHW
                 # Apply NHWC conversion
-                in_shape = (I.shape[0], I.shape[2], I.shape[3], I.shape[1])
+                in_shape = (inp.shape[0], inp.shape[2], inp.shape[3],
+                            inp.shape[1])
                 if in_data is not None:
-                    in_data = np.transpose(I.data, (0, 2, 3, 1))
+                    in_data = np.transpose(inp.data, (0, 2, 3, 1))
 
             # input
-            if I.name in self.input_names:
+            if inp.name in self.input_names:
                 # Placeholder input
                 input_id = tf_serializer.SerializeTensor(
-                    I.name, I.dtype, in_shape, None)
-                self.inputs[I.name] = input_id
+                    inp.name, inp.dtype, in_shape, None)
+                self.inputs[inp.name] = input_id
             elif parent_layer_names[0] == 'data':
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', 'float32', in_shape, in_data)
@@ -955,8 +1256,9 @@ class TensorFlowLiteConverter(object):
 
             # new_shape(1D tensor with 2 elements)
             new_shape_name = layer_name + '_new_shape'
-            new_shape_id = tf_serializer.SerializeTensor(new_shape_name,
-                                                 'int32', [2], np.array([func.out_H, func.out_W], dtype=np.int32))
+            new_shape_id = tf_serializer.SerializeTensor(
+                new_shape_name, 'int32', [2],
+                np.array([func.out_H, func.out_W], dtype=np.int32))
 
             # output
             _output = func.outputs[0]
@@ -964,30 +1266,32 @@ class TensorFlowLiteConverter(object):
 
             if len(output_shape) == 4:
                 # NCHW -> NHWC
-                output_shape = (_output().shape[0],
-                                _output().shape[2],
-                                _output().shape[3],
-                                _output().shape[1])
+                output_shape = (_output().shape[0], _output().shape[2],
+                                _output().shape[3], _output().shape[1])
 
             logger.info("output.shape = {}".format(output_shape))
             print('len(shape) = {}'.format(len(output_shape)))
             print('ty(shape) = {}'.format(type(output_shape)))
             print('resize_images.out_shape = {}'.format(output_shape))
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
-                                                      I.dtype, output_shape, None)
+                                                      inp.dtype, output_shape,
+                                                      None)
             tf_serializer.RegisterConnection(layer_name, output_id)
 
-            serialize_ops.SerializeOpResizeImages(tf_serializer, input_id, output_id, new_shape_id)
+            serialize_ops.SerializeOpResizeImages(tf_serializer, input_id,
+                                                  output_id, new_shape_id)
 
         elif func.label == '_ + _':
             # Add
 
             if len(func.inputs) != 2:
-                logger.fatal('The number of inputs for `Add` op must be two(2) but got got {}'.format(len(func.inputs)))
+                logger.fatal(
+                    'The number of inputs for `Add` op must be two(2) but got got {}'
+                    .format(len(func.inputs)))
 
             for _input in func.inputs:
-                logger.info('Add in %s(id %d)',
-                            self._get_parent_name(_input), id(_input))
+                logger.info('Add in %s(id %d)', self._get_parent_name(_input),
+                            id(_input))
 
             input_ids = []
 
@@ -1001,9 +1305,11 @@ class TensorFlowLiteConverter(object):
                 elif parent_layer_names[i] == 'data':
                     # Constant
                     input_id = tf_serializer.SerializeTensor(
-                        layer_name + '_input'.format(i), inp.data.dtype, inp.shape, inp.data)
+                        layer_name + '_input'.format(i), inp.data.dtype,
+                        inp.shape, inp.data)
                 else:
-                    input_id = tf_serializer.FindConnection(parent_layer_names[i])
+                    input_id = tf_serializer.FindConnection(
+                        parent_layer_names[i])
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
@@ -1018,20 +1324,24 @@ class TensorFlowLiteConverter(object):
 
             output_name = layer_name + '_0'
             output_id = tf_serializer.SerializeTensor(output_name,
-                                                      func.inputs[0].dtype, _output().shape, None)
+                                                      func.inputs[0].dtype,
+                                                      _output().shape, None)
             tf_serializer.RegisterConnection(layer_name, output_id)
 
-            serialize_ops.SerializeOpAdd(tf_serializer, input_ids[0], input_ids[1], output_id)
+            serialize_ops.SerializeOpAdd(tf_serializer, input_ids[0],
+                                         input_ids[1], output_id)
 
         elif func.label == '_ - _':
             # Sub
 
             if len(func.inputs) != 2:
-                logger.fatal('The number of inputs for `Sub` op must be two(2) but got got {}'.format(len(func.inputs)))
+                logger.fatal(
+                    'The number of inputs for `Sub` op must be two(2) but got got {}'
+                    .format(len(func.inputs)))
 
             for _input in func.inputs:
-                logger.info('Sub in %s(id %d)',
-                            self._get_parent_name(_input), id(_input))
+                logger.info('Sub in %s(id %d)', self._get_parent_name(_input),
+                            id(_input))
 
             input_ids = []
 
@@ -1045,9 +1355,11 @@ class TensorFlowLiteConverter(object):
                 elif parent_layer_names[i] == 'data':
                     # Constant
                     input_id = tf_serializer.SerializeTensor(
-                        layer_name + '_input'.format(i), inp.data.dtype, inp.shape, inp.data)
+                        layer_name + '_input'.format(i), inp.data.dtype,
+                        inp.shape, inp.data)
                 else:
-                    input_id = tf_serializer.FindConnection(parent_layer_names[i])
+                    input_id = tf_serializer.FindConnection(
+                        parent_layer_names[i])
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
@@ -1061,11 +1373,12 @@ class TensorFlowLiteConverter(object):
             logger.info("output.shape = {}".format(_output().shape))
 
             output_name = layer_name + '_0'
-            output_id = tf_serializer.SerializeTensor(output_name,
-                                                      'float32', _output().shape, None)
+            output_id = tf_serializer.SerializeTensor(output_name, 'float32',
+                                                      _output().shape, None)
             tf_serializer.RegisterConnection(layer_name, output_id)
 
-            serialize_ops.SerializeOpSub(tf_serializer, input_ids[0], input_ids[1], output_id)
+            serialize_ops.SerializeOpSub(tf_serializer, input_ids[0],
+                                         input_ids[1], output_id)
         else:
             logger.fatal("Unknown or unsupported function/link : %s",
                          func.label)
@@ -1076,7 +1389,6 @@ class TensorFlowLiteConverter(object):
         for _inp in _inputs:
             assert _inp.name is not None
             self.input_names.append(_inp.name)
-
 
         logger.info('input names = {}'.format(self.input_names))
 

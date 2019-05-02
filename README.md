@@ -29,28 +29,35 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 
 ## Supported layers/ops
 
-| Chainer          | tflite           | Comment                                  |
-| ---------------- | ---------------- | ---------------------------------------- |
-| Add              | ADD              | two inputs only                          |
-| Reshape          | RESHAPE          |                                          |
-| LinearFunction   | FULLY_CONNECTED  | activation=None                          |
-| ReLU             | RELU             |                                          |
-| ResizeImages     | RESIZE_BILINEAR  | `align_corners=true`                     |
-| Pad              | PADV2            | Padding value is constant zero(0) only   |
-| AveragePooling2D | AVERAGE_POOL_2D  |                                          |
-| MaxPooling2D     | MAX_POOL_2D      |                                          |
+| Chainer                 | tflite           | Comment                                  |
+| ----------------------- | ---------------- | ---------------------------------------- |
+| Add                     | ADD              | two inputs only                          |
+| Reshape                 | RESHAPE          |                                          |
+| LinearFunction          | FULLY_CONNECTED  | activation=None                          |
+| ReLU                    | RELU             |                                          |
+| ResizeImages            | RESIZE_BILINEAR  | `align_corners=true`                     |
+| Pad                     | PADV2            | Support constant value                   |
+| AveragePooling2D        | AVERAGE_POOL_2D  |                                          |
+| MaxPooling2D            | MAX_POOL_2D      |                                          |
+| Convolution2D           | CONV_2D          | dilated=1                                |
+| DilatedConvolution2D    | CONV_2D          | dilated=N                                |
+
+### Untested layers/ops
+
+* Conv2D with stride > 1
+* Ave/Max pooling with stride > 1
 
 ### Not supported(or TODO)
 
-* [ ] hstack
+* [ ] ConvND
+* [ ] PooingND
+* [ ] hstack, vstack(use `Pack`?)
 * [ ] split_axis
 * [ ] sqrt
 * [ ] mean
 * [ ] mean_squared_error
 * [ ] Concat
 * [ ] Dropout
-* [ ] Conv2D
-* [ ] DialatedConvolution2D
 * [ ] Deconv2D
 * [ ] BatchNormalization
 * [ ] FusedBatchNormalization

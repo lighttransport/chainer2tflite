@@ -10,6 +10,7 @@ from .tflite import BuiltinOptions
 from .tflite import AddOptions
 from .tflite import ReshapeOptions
 from .tflite import ResizeBilinearOptions
+from .tflite import Conv2DOptions
 from .tflite import Pool2DOptions
 from .tflite import PadOptions
 
@@ -59,6 +60,90 @@ def SerializeOpFullyConnected(serializer, fused_activation_function, input_id,
     tflite.Operator.OperatorAddBuiltinOptionsType(
         serializer.builder,
         tflite.BuiltinOptions.BuiltinOptions.FullyConnectedOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
+    serializer.logger.debug('opcode_id = {}'.format(opcode_id))
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeConv2D(serializer, input_id, filter_id, bias_id,
+                    output_id, fused_activation_function, padding, stride, dilations):
+    """Serialize conv2d.
+
+    Args:
+        serializer: tflite serializer.
+        input_id(int): Input Tensor id.
+        filter_id(int): Filter Tensor id
+        bias_id(int): Bias Tensor id.
+        output_id(int): Output Tensor id.
+        fused_activation_function(string): activation function type('NONE').
+        padding(string): padding('SAME' or 'VALID')
+        stride([int]): [stride_w, stride_h].
+        dilations([int]): [dilation_w_factor, dilation_h_factor].
+
+    """
+
+    serializer.logger.info(
+        "conv2d. input = {}, filter = {}, bias = {}, output = {}, fused_activation_function = {}, stride = {}, dilations = {}".format(
+            input_id, filter_id, bias_id, output_id, fused_activation_function, stride, dilations))
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.CONV_2D)
+
+    # Options
+    if fused_activation_function == 'NONE':
+        activation_function_type = tflite.ActivationFunctionType.ActivationFunctionType.NONE
+    else:
+        print('Unsupported activation function: ', fused_activation_function)
+        raise
+
+    if padding == 'VALID':
+        padding_type = tflite.Padding.Padding.VALID
+    elif padding == 'SAME':
+        padding_type = tflite.Padding.Padding.SAME
+    else:
+        print('Unsupported padding: ', padding)
+        raise
+
+
+    tflite.Conv2DOptions.Conv2DOptionsStart(serializer.builder)
+    tflite.Conv2DOptions.Conv2DOptionsAddFusedActivationFunction(
+        serializer.builder, activation_function_type)
+    tflite.Conv2DOptions.Conv2DOptionsAddPadding(
+        serializer.builder, padding_type)
+    tflite.Conv2DOptions.Conv2DOptionsAddStrideW(
+        serializer.builder, stride[0])
+    tflite.Conv2DOptions.Conv2DOptionsAddStrideH(
+        serializer.builder, stride[1])
+    tflite.Conv2DOptions.Conv2DOptionsAddDilationWFactor(
+        serializer.builder, dilations[0])
+    tflite.Conv2DOptions.Conv2DOptionsAddDilationHFactor(
+        serializer.builder, dilations[1])
+    tf_options = tflite.Conv2DOptions.Conv2DOptionsEnd(
+        serializer.builder)
+
+    # Inputs
+    num_inputs = 3
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(bias_id)
+    serializer.builder.PrependInt32(filter_id)
+    serializer.builder.PrependInt32(input_id)
+    tf_inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    tf_outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, tf_inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, tf_outputs)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder,
+        tflite.BuiltinOptions.BuiltinOptions.Conv2DOptions)
     tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
     serializer.logger.debug('opcode_id = {}'.format(opcode_id))
     tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
@@ -347,7 +432,7 @@ def SerializeOpSub(serializer, x_id, y_id, output_id):
 
     return op
 
-def SerializeOpPad(serializer, input_id, output_id, padding_id):
+def SerializeOpPad(serializer, input_id, output_id, padding_id, constant_id):
     """Serialize Pad.
 
     Args:
@@ -355,6 +440,7 @@ def SerializeOpPad(serializer, input_id, output_id, padding_id):
         input_id (int): Input tensor id.
         output_id (int): Output tensor id.
         padding_id (int): Tensor id which contains padding size(2x2 shape).
+        constant_id (int): Optional constant value for padded area.
 
     """
 
@@ -367,11 +453,21 @@ def SerializeOpPad(serializer, input_id, output_id, padding_id):
     tf_options = tflite.PadOptions.PadOptionsEnd(serializer.builder)
 
     # Inputs
-    num_inputs = 2
-    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
-    serializer.builder.PrependInt32(padding_id)
-    serializer.builder.PrependInt32(input_id)
-    tf_inputs = serializer.builder.EndVector(num_inputs)
+    if constant_id == -1:
+        num_inputs = 2
+        tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+        serializer.builder.PrependInt32(padding_id)
+        serializer.builder.PrependInt32(input_id)
+        tf_inputs = serializer.builder.EndVector(num_inputs)
+    else:
+        # Even though constant value tensor is not described in tflite document,
+        # tflite interpreter implementation supoorts it.
+        num_inputs = 3
+        tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+        serializer.builder.PrependInt32(constant_id)
+        serializer.builder.PrependInt32(padding_id)
+        serializer.builder.PrependInt32(input_id)
+        tf_inputs = serializer.builder.EndVector(num_inputs)
 
     # Outputs
     num_outputs = 1

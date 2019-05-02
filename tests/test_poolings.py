@@ -5,6 +5,8 @@ import chainer.links as L
 from chainer2tflite.testing import input_generator
 from tests.helper import TFLiteModelTest
 
+import pytest
+
 class TestAveragePooling2D(TFLiteModelTest):
 
     def setUp(self):
@@ -23,6 +25,17 @@ class TestAveragePooling2DPad1(TFLiteModelTest):
         padding = 1
         # arg = [kernel_size, stride, padding]
         self.model = Model(F.average_pooling_2d, [2, 1, padding], None)
+        self.x = input_generator.increasing(1, 3, 6, 6)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
+class TestMaxPooling2D(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [kernel_size, stride, padding]
+        self.model = Model(F.max_pooling_2d, [2, 1, 0], False)
         self.x = input_generator.increasing(1, 3, 6, 6)
 
     def test_output(self):

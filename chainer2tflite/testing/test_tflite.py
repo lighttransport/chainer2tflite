@@ -60,7 +60,6 @@ def check_model_expect(test_path, input_names=None):
             if outp['name'] == output_details[i]['name']:
                 found = True
 
-
         if not found:
             output_details.append(outp)
 
@@ -80,8 +79,8 @@ def check_model_expect(test_path, input_names=None):
     if input_names is not None:
         assert list(sorted(input_names)) == list(sorted(rt_input_names))
 
-    test_data_sets = sorted([
-        p for p in os.listdir(test_path) if p.startswith('test_data_set_')])
+    test_data_sets = sorted(
+        [p for p in os.listdir(test_path) if p.startswith('test_data_set_')])
 
     for test_data in test_data_sets:
         test_data_path = os.path.join(test_path, test_data)
@@ -91,8 +90,8 @@ def check_model_expect(test_path, input_names=None):
         print('input_names: ', rt_input_names)
         print('output_names: ', rt_output_names)
 
-        inputs, outputs = load_test_data(
-            test_data_path, rt_input_names, rt_output_names)
+        inputs, outputs = load_test_data(test_data_path, rt_input_names,
+                                         rt_output_names)
 
         print('ref in', inputs)
         print('ref out', outputs)
@@ -113,24 +112,29 @@ def check_model_expect(test_path, input_names=None):
             found = False
             for i in range(len(input_details)):
                 if ref_name == input_details[i]['name']:
-                    interpreter.set_tensor(input_details[i]['index'], ref_value)
+                    interpreter.set_tensor(input_details[i]['index'],
+                                           ref_value)
                     found = True
 
             if not found:
                 print('input[{}] not found in tflite inputs'.format(ref_name))
                 raise
 
-
-        interpreter.invoke()
+        try:
+            interpreter.invoke()
+        except:
+            warnings.warn(
+                'Failed to execute tflite interpreter. Invalid .tfite file was given.'
+            )
+            raise
 
         rt_out = interpreter.get_tensor(output_details[0]['index'])
-
-        print('tflite out', rt_out)
-
         cn_out = outputs[rt_output_names[0]]
 
+        print('tflite out shape = ', rt_out.shape)
         print('cn out shape = ', cn_out.shape)
 
+        print('tflite out', rt_out)
 
         if len(rt_out.shape) == 4:
             # Convert to NCHW for comparison with Chainer's result
