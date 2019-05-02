@@ -1063,6 +1063,40 @@ class TensorFlowLiteConverter(object):
             serialize_ops.SerializeMaxPooling2D(tf_serializer, input_id,
                                                 output_id, activation_function,
                                                 tf_padding_mode, stride, filter_size)
+        elif func.label == 'ELU':
+
+            assert (len(func.inputs) == 1)
+
+            # TODO(LTE): Support non-float32 type
+
+            # input
+            inp = func.inputs[0]
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name, 'float32', inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input0', 'float32', inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[0]))
+                    raise
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      'float32',
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            serialize_ops.SerializeOpELU(tf_serializer, input_id, output_id)
+
         elif func.label == 'ReLU':
 
             assert (len(func.inputs) == 1)
