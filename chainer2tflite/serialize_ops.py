@@ -13,6 +13,8 @@ from .tflite import ResizeBilinearOptions
 from .tflite import Conv2DOptions
 from .tflite import Pool2DOptions
 from .tflite import PadOptions
+from .tflite import LeakyReluOptions
+from .tflite import SoftmaxOptions
 
 from .tflite import ActivationFunctionType
 from .tflite import Padding
@@ -558,6 +560,143 @@ def SerializeOpReLU(serializer, input_id, output_id):
 
     opcode_id = serializer.RegisterBuiltinOpcode(
         tflite.BuiltinOperator.BuiltinOperator.RELU)
+
+    # Inputs
+    num_inputs = 1
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(input_id)
+    inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeOpLeakyReLU(serializer, input_id, output_id, alpha):
+    """Serialize LeakyReLU op.
+
+    Args:
+        serializer(TensorFlowLiteSerializer):
+        input_id(int32): Input tensor id
+        output_id(int32): Output tensor id
+        alpha(float): Slope of the activation at x < 0 (provided alpha <= 1)
+
+    Returns:
+        tflite.Operator
+
+    """
+
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.LEAKY_RELU)
+
+    # Options
+    tflite.LeakyReluOptions.LeakyReluOptionsStart(serializer.builder)
+    tflite.LeakyReluOptions.LeakyReluOptionsAddAlpha(serializer.builder,
+                                                    alpha)
+    tf_options = tflite.LeakyReluOptions.LeakyReluOptionsEnd(serializer.builder)
+
+    # Inputs
+    num_inputs = 1
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(input_id)
+    inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder, tflite.BuiltinOptions.BuiltinOptions.LeakyReluOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
+    serializer.logger.debug('opcode = {}'.format(opcode_id))
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeOpSoftmax(serializer, input_id, output_id, beta):
+    """Serialize Softmax op.
+
+    Args:
+        serializer(TensorFlowLiteSerializer):
+        input_id(int32): Input tensor id
+        output_id(int32): Output tensor id
+        beta(float): Scaling factor
+
+    Returns:
+        tflite.Operator
+
+    """
+
+    # Options
+    tflite.SoftmaxOptions.SoftmaxOptionsStart(serializer.builder)
+    tflite.SoftmaxOptions.SoftmaxOptionsAddBeta(serializer.builder,
+                                                    beta)
+    tf_options = tflite.SoftmaxOptions.SoftmaxOptionsEnd(serializer.builder)
+
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.SOFTMAX)
+
+    # Inputs
+    num_inputs = 1
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(input_id)
+    inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder, tflite.BuiltinOptions.BuiltinOptions.SoftmaxOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeOpLogSoftmax(serializer, input_id, output_id):
+    """Serialize LogSoftmax op.
+
+    Args:
+        serializer(TensorFlowLiteSerializer):
+        input_id(int32): Input tensor id
+        output_id(int32): Output tensor id
+
+    Returns:
+        tflite.Operator
+
+    """
+
+    # TODO(LTE): Support parameters for log_softmax op
+
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.LOG_SOFTMAX)
 
     # Inputs
     num_inputs = 1

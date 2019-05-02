@@ -1097,6 +1097,136 @@ class TensorFlowLiteConverter(object):
 
             serialize_ops.SerializeOpReLU(tf_serializer, input_id, output_id)
 
+        elif func.label == 'LeakyReLU':
+
+            assert (len(func.inputs) == 1)
+
+            # TODO(LTE): Support non-float32 type
+
+            # input
+            inp = func.inputs[0]
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name, 'float32', inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input0', 'float32', inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[0]))
+                    raise
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      'float32',
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+
+            # alpha(slope)
+            alpha = func.slope
+            logger.info('leay relu slope = {}'.format(alpha))
+
+            serialize_ops.SerializeOpLeakyReLU(tf_serializer, input_id, output_id, alpha)
+
+        elif func.label == 'Softmax':
+
+            assert (len(func.inputs) == 1)
+
+            # TODO(LTE): Support non-float32 type
+
+            # input
+            inp = func.inputs[0]
+
+            assert len(inp.shape) >= 2
+
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name, 'float32', inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input0', 'float32', inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[0]))
+                    raise
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      'float32',
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+
+            # axis
+            axis = func.axis
+
+            # tflite uses las dim as an axis.
+            assert axis == (len(inp.shape) - 1)
+
+            # NOTE(LTE): Chainer does not have `beta` parameter in softmax.
+            beta = 1.0
+
+            serialize_ops.SerializeOpSoftmax(tf_serializer, input_id, output_id, beta)
+
+        elif func.label == 'LogSoftmax':
+
+            assert (len(func.inputs) == 1)
+
+            # TODO(LTE): Support non-float32 type
+
+            # input
+            inp = func.inputs[0]
+
+            assert len(inp.shape) >= 2
+
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name, 'float32', inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input0', 'float32', inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[0]))
+                    raise
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      'float32',
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+
+            # axis
+            axis = func.axis
+
+            # tflite uses las dim as an axis.
+            assert axis == (len(inp.shape) - 1)
+
+            serialize_ops.SerializeOpLogSoftmax(tf_serializer, input_id, output_id)
+
         elif func.label == 'Pad':
 
             assert (len(func.inputs) == 1)
@@ -1382,6 +1512,7 @@ class TensorFlowLiteConverter(object):
         else:
             logger.fatal("Unknown or unsupported function/link : %s",
                          func.label)
+            raise
 
     def __call__(self, _inputs, outputs):
 
