@@ -5,6 +5,99 @@ import chainer.links as L
 from chainer2tflite.testing import input_generator
 from tests.helper import TFLiteModelTest
 
+import pytest
+
+class TestVStack1D(TFLiteModelTest):
+
+    def setUp(self):
+
+        self.model = ModelWithTwoArgs(F.vstack)
+        self.x = input_generator.increasing(3)
+        self.y = input_generator.increasing(3)
+
+    def test_output(self):
+        self.expect(self.model, [self.x, self.y])
+
+class TestVStack2D(TFLiteModelTest):
+
+    def setUp(self):
+
+        self.model = ModelWithTwoArgs(F.vstack)
+        self.x = input_generator.increasing(2, 3)
+        self.y = input_generator.increasing(2, 3)
+
+    def test_output(self):
+        self.expect(self.model, [self.x, self.y])
+
+class TestVStack3D(TFLiteModelTest):
+
+    def setUp(self):
+
+        self.model = ModelWithTwoArgs(F.vstack)
+        self.x = input_generator.increasing(2, 3, 4)
+        self.y = input_generator.increasing(2, 3, 4)
+
+    def test_output(self):
+        self.expect(self.model, [self.x, self.y])
+
+@pytest.mark.skip(reason='Test fail due to internal NCHW -> NHWC conversion. Need to add feature of diabling tensor reshaping in chainer2tflite')
+class TestVStack4D(TFLiteModelTest):
+
+    def setUp(self):
+
+        self.model = ModelWithTwoArgs(F.vstack)
+        self.x = input_generator.increasing(2, 3, 4, 5)
+        self.y = input_generator.increasing(2, 3, 4, 5)
+
+    def test_output(self):
+        self.expect(self.model, [self.x, self.y])
+
+class TestHStack1D(TFLiteModelTest):
+
+    def setUp(self):
+
+        self.model = ModelWithTwoArgs(F.hstack)
+        self.x = input_generator.increasing(3)
+        self.y = input_generator.increasing(3)
+
+    def test_output(self):
+        self.expect(self.model, [self.x, self.y])
+
+class TestHStack2D(TFLiteModelTest):
+
+    def setUp(self):
+
+        self.model = ModelWithTwoArgs(F.hstack)
+        self.x = input_generator.increasing(2, 3)
+        self.y = input_generator.increasing(2, 3)
+
+    def test_output(self):
+        self.expect(self.model, [self.x, self.y])
+
+class TestHStack3D(TFLiteModelTest):
+
+    def setUp(self):
+
+        self.model = ModelWithTwoArgs(F.hstack)
+        self.x = input_generator.increasing(2, 3, 4)
+        self.y = input_generator.increasing(2, 3, 4)
+
+    def test_output(self):
+        self.expect(self.model, [self.x, self.y])
+
+@pytest.mark.skip(reason='Test fail due to internal NCHW -> NHWC conversion. Need to add feature of diabling tensor reshaping in chainer2tflite')
+class TestHStack4D(TFLiteModelTest):
+
+    def setUp(self):
+
+        self.model = ModelWithTwoArgs(F.hstack)
+        self.x = input_generator.increasing(2, 3, 4, 5)
+        self.y = input_generator.increasing(2, 3, 4, 5)
+
+    def test_output(self):
+        self.expect(self.model, [self.x, self.y])
+
+
 class TestPad(TFLiteModelTest):
 
     def setUp(self):
@@ -28,6 +121,16 @@ class TestPad3D(TFLiteModelTest):
 
     def test_output(self):
         self.expect(self.model, self.x)
+
+class ModelWithTwoArgs(chainer.Chain):
+
+    def __init__(self, ops):
+        super(ModelWithTwoArgs, self).__init__()
+        self.ops = ops
+
+    def __call__(self, x, y):
+        return self.ops([x, y])
+
 
 class Model(chainer.Chain):
 

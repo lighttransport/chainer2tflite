@@ -29,23 +29,32 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 
 ## Supported layers/ops
 
-| Chainer                 | tflite            | Comment                                  |
-| ----------------------- | ----------------- | ---------------------------------------- |
-| Add                     | ADD               | two inputs only                          |
-| Reshape                 | RESHAPE           |                                          |
-| LinearFunction          | FULLY_CONNECTED   | activation=None                          |
-| ELU                     | ELU               | tflite `r1.14` or later                  |
-| ReLU                    | RELU              |                                          |
-| LeakyReLU               | REAKY_RELU        |                                          |
-| ResizeImages            | RESIZE_BILINEAR   | `align_corners=true`                     |
-| Pad                     | PADV2             | Support constant value                   |
-| AveragePooling2D        | AVERAGE_POOL_2D   |                                          |
-| MaxPooling2D            | MAX_POOL_2D       |                                          |
-| Convolution2D           | CONV_2D           | dilated=1                                |
-| DilatedConvolution2D    | CONV_2D           | dilated=N                                |
-| SoftMax                 | SOFTMAX           | axis in Chainer must be last dim         |
-| LogSoftMax              | LOG_SOFTMAX       | axis in Chainer must be last dim         |
-| Deconvolution2D         | CONV_2D_TRANSPOSE |                                          |
+| Chainer                 | tflite                    | Comment                                  |
+| ----------------------- | ------------------------- | ---------------------------------------- |
+| Add                     | ADD                       | two inputs only                          |
+| Reshape                 | RESHAPE                   |                                          |
+| LinearFunction          | FULLY_CONNECTED           | activation=None                          |
+| ReLU                    | RELU                      |                                          |
+| LeakyReLU               | REAKY_RELU                |                                          |
+| ResizeImages            | RESIZE_BILINEAR           | `align_corners=true`                     |
+| Pad                     | PADV2                     | Support constant value                   |
+| AveragePooling2D        | AVERAGE_POOL_2D           |                                          |
+| MaxPooling2D            | MAX_POOL_2D               |                                          |
+| Convolution2D           | CONV_2D                   | dilated=1                                |
+| DilatedConvolution2D    | CONV_2D                   | dilated=N                                |
+| SoftMax                 | SOFTMAX                   | axis in Chainer must be last dim         |
+| LogSoftMax              | LOG_SOFTMAX               | axis in Chainer must be last dim         |
+| Deconvolution2D         | CONV_2D_TRANSPOSE         |                                          |
+| Vstak                   | CONCATENATION OR PACK(1D) | axis=0                                   |
+| Hstak                   | CONCATENATION             | axis=1                                   |
+
+
+## Conditionally supported layers/ops
+
+| Chainer                 | tflite                    | Comment                                  |
+| ----------------------- | ------------------------- | ---------------------------------------- |
+| Dropout                 | See comments              | Use deterministic random-valued tensor   |
+| ELU                     | ELU                       | tflite `r1.14` or later                  |
 
 ### Untested layers/ops
 
@@ -54,12 +63,9 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 
 ### Not supported(or TODO)
 
-* [ ] Unpooling2D
+* [ ] Unpooling2D, UnpoolingND
 * [ ] ConvND
 * [ ] PooingND
-* [ ] hstack, vstack(use `Pack`?)
-* Random
-  * [ ] Dropout
 * [ ] Absolute and other primitive math expression.
   * [ ] sqrt
   * [ ] mean

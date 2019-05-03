@@ -15,6 +15,8 @@ from .tflite import Pool2DOptions
 from .tflite import PadOptions
 from .tflite import LeakyReluOptions
 from .tflite import SoftmaxOptions
+from .tflite import PackOptions
+from .tflite import ConcatenationOptions
 
 from .tflite import ActivationFunctionType
 from .tflite import Padding
@@ -804,6 +806,122 @@ def SerializeOpReshape(serializer, input_id, output_id, new_shape):
     tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
     serializer.logger.debug('opcode = {}'.format(opcode_id))
     tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeOpPack(serializer, input_ids, output_id, axis):
+    """Serialize Pack function.
+
+    Args:
+
+        input_id ([int]): List of input Tensor id.
+        output_id (int): Output Tensor id.
+        axis (int): Axis for packing.
+
+    """
+
+    serializer.logger.info(
+        "pack. inputs = {}, axis = {}, output = {}".format(
+            input_ids, axis, output_id))
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.PACK)
+
+    # `value_count` parameter should be same with len(input_ids)
+    value_count = len(input_ids)
+    assert value_count > 1
+
+    # Options
+    tflite.PackOptions.PackOptionsStart(serializer.builder)
+    tflite.PackOptions.PackOptionsAddValuesCount(
+        serializer.builder, value_count)
+    tflite.PackOptions.PackOptionsAddAxis(
+        serializer.builder, axis)
+    tf_options = tflite.PackOptions.PackOptionsEnd(
+        serializer.builder)
+
+    # Inputs
+    # NOTE(LTE): 2nd input is an integer, not tensor id.
+    num_inputs = value_count
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    for t_id in reversed(input_ids):
+        serializer.builder.PrependInt32(t_id)
+    tf_inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    tf_outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, tf_inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, tf_outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder, tflite.BuiltinOptions.BuiltinOptions.PackOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeOpConcatenation(serializer, input_ids, output_id, axis):
+    """Serialize Pack function.
+
+    Args:
+
+        input_id ([int]): List of input Tensor id.
+        output_id (int): Output Tensor id.
+        axis (int): Axis for packing.
+
+    """
+
+    serializer.logger.info(
+        "concatenation. inputs = {}, axis = {}, output = {}".format(
+            input_ids, axis, output_id))
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.CONCATENATION)
+
+    # `value_count` parameter should be same with len(input_ids)
+    value_count = len(input_ids)
+    assert value_count > 1
+
+    # Options
+    tflite.ConcatenationOptions.ConcatenationOptionsStart(serializer.builder)
+
+    # TODO(LTE): Support FAF
+    tflite.ConcatenationOptions.ConcatenationOptionsAddFusedActivationFunction(
+        serializer.builder, tflite.ActivationFunctionType.ActivationFunctionType.NONE)
+    tflite.ConcatenationOptions.ConcatenationOptionsAddAxis(
+        serializer.builder, axis)
+    tf_options = tflite.ConcatenationOptions.ConcatenationOptionsEnd(
+        serializer.builder)
+
+    # Inputs
+    # NOTE(LTE): 2nd input is an integer, not tensor id.
+    num_inputs = value_count
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    for t_id in reversed(input_ids):
+        serializer.builder.PrependInt32(t_id)
+    tf_inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    tf_outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, tf_inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, tf_outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder, tflite.BuiltinOptions.BuiltinOptions.ConcatenationOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
     op = tflite.Operator.OperatorEnd(serializer.builder)
 
     serializer.operators.append(op)

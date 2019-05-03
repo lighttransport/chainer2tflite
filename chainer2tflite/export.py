@@ -1261,6 +1261,100 @@ class TensorFlowLiteConverter(object):
 
             serialize_ops.SerializeOpLogSoftmax(tf_serializer, input_id, output_id)
 
+        elif func.label == 'Vstack':
+
+            assert (len(func.inputs) >= 2)
+
+            # TODO(LTE): Support non-float32 type
+
+            # input
+            input_ids = []
+            for inp in func.inputs:
+
+                if inp.name in self.input_names:
+                    # Placeholder input
+                    input_id = tf_serializer.SerializeTensor(
+                        inp.name, 'float32', inp.shape, None)
+                    self.inputs[inp.name] = input_id
+                elif parent_layer_names[0] == 'data':
+                    input_id = tf_serializer.SerializeTensor(
+                        layer_name + '_input0', 'float32', inp.shape, inp.data)
+                else:
+                    input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                    # There should have valid connection
+                    if input_id is None:
+                        logger.fatal('{} not found in connections'.format(
+                            parent_layer_names[0]))
+                        raise
+
+
+                input_ids.append(input_id)
+
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      'float32',
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+
+            if len(func.inputs[0].shape) == 1:
+                axis = 0
+                serialize_ops.SerializeOpPack(tf_serializer, input_ids, output_id, axis)
+            else:
+                axis = 0
+                serialize_ops.SerializeOpConcatenation(tf_serializer, input_ids, output_id, axis)
+
+
+        elif func.label == 'Hstack':
+
+            assert (len(func.inputs) >= 2)
+
+            # TODO(LTE): Support non-float32 type
+
+            # input
+            input_ids = []
+            for inp in func.inputs:
+
+                if inp.name in self.input_names:
+                    # Placeholder input
+                    input_id = tf_serializer.SerializeTensor(
+                        inp.name, 'float32', inp.shape, None)
+                    self.inputs[inp.name] = input_id
+                elif parent_layer_names[0] == 'data':
+                    input_id = tf_serializer.SerializeTensor(
+                        layer_name + '_input0', 'float32', inp.shape, inp.data)
+                else:
+                    input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                    # There should have valid connection
+                    if input_id is None:
+                        logger.fatal('{} not found in connections'.format(
+                            parent_layer_names[0]))
+                        raise
+
+
+                input_ids.append(input_id)
+
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      'float32',
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+
+            if len(func.inputs[0].shape) == 1:
+                axis = 0
+                serialize_ops.SerializeOpConcatenation(tf_serializer, input_ids, output_id, axis)
+            else:
+                axis = 1
+                serialize_ops.SerializeOpConcatenation(tf_serializer, input_ids, output_id, axis)
+
+
         elif func.label == 'Pad':
 
             assert (len(func.inputs) == 1)
@@ -1268,22 +1362,19 @@ class TensorFlowLiteConverter(object):
 
             print(func.pad_bw)
 
-            values = float(0.0)
+            pad_value = float(0.0)
             if 'constant_values' in func.keywords:
                 values = func.keywords['constant_values']
                 if not isinstance(values, int) and len(values) > 1:
                     raise ValueError(
-                        'tflite doesn\'t support multiple constant values for Pad '
+                        'Currently scalar constant valueues is supported for Pad '
                         'operation')
                 elif not isinstance(values, int):
-                    values = float(values[0])
+                    pad_value = float(values[0])
                 else:
-                    values = float(values)
+                    pad_value = float(values)
 
-            if (values > 1e-5) or (values < -1e-5):
-                raise ValueError(
-                    'tflite doesn\'t support padding constant value other than zero'
-                )
+            print('pad value = ', pad_value)
 
             new_shape = func.outputs[0]().shape
             print('pad new_shape = ', new_shape)
@@ -1334,6 +1425,14 @@ class TensorFlowLiteConverter(object):
                                                        inp.dtype,
                                                        padding.shape, padding)
 
+            constant_id = -1
+            if abs(float(pad_value)) > 1e-6:
+                # create a constant value tensor used for padding value.
+                constant_value = np.array([pad_value], np.float32)
+                constant_id = tf_serializer.SerializeTensor(layer_name + '_constant_value',
+                                                           constant_value.dtype, constant_value.shape,
+                                                           constant_value)
+
             # output
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       inp.dtype, new_shape,
@@ -1341,7 +1440,7 @@ class TensorFlowLiteConverter(object):
             tf_serializer.RegisterConnection(layer_name, output_id)
 
             serialize_ops.SerializeOpPad(tf_serializer, input_id, output_id,
-                                         padding_id)
+                                         padding_id, constant_id)
 
         elif func.label == 'Reshape':
 
