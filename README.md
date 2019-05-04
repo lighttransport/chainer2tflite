@@ -32,6 +32,9 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 | Chainer                 | tflite                    | Comment                                  |
 | ----------------------- | ------------------------- | ---------------------------------------- |
 | Add                     | ADD                       | two inputs only                          |
+| Sub                     | SUB                       |                                          |
+| Mul                     | MUL                       |                                          |
+| Div                     | DIV                       |                                          |
 | Reshape                 | RESHAPE                   |                                          |
 | LinearFunction          | FULLY_CONNECTED           | activation=None                          |
 | ReLU                    | RELU                      |                                          |
@@ -42,8 +45,8 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 | MaxPooling2D            | MAX_POOL_2D               |                                          |
 | Convolution2D           | CONV_2D                   | dilated=1                                |
 | DilatedConvolution2D    | CONV_2D                   | dilated=N                                |
-| SoftMax                 | SOFTMAX                   | axis in Chainer must be last dim         |
-| LogSoftMax              | LOG_SOFTMAX               | axis in Chainer must be last dim         |
+| SoftMax                 | SOFTMAX                   | `axis` in Chainer must be last dim       |
+| LogSoftMax              | LOG_SOFTMAX               | `axis` in Chainer must be last dim       |
 | Deconvolution2D         | CONV_2D_TRANSPOSE         |                                          |
 | Vstak                   | CONCATENATION OR PACK(1D) | axis=0                                   |
 | Hstak                   | CONCATENATION             | axis=1                                   |
@@ -56,6 +59,16 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 | Dropout                 | See comments              | Use deterministic random-valued tensor   |
 | ELU                     | ELU                       | tflite `r1.14` or later                  |
 
+See `chainer2tflite/convert_dropout.py` for details on `Dropout` conversion.
+At least we've confirmed unit test passes by force setting same seed value for random number generation.
+
+## Unsupported Chainer functions
+
+### floor, ceil
+
+It looks Chainer directly calls `floor`, `ceil` math function and we cannot retrieve symbolic reposentation of these node.
+Although tflite serializer(`chainer2tflite/serialize_ops.py`) supports `FLOOR` and `CEIL`
+
 ### Untested layers/ops
 
 * Conv2D with stride > 1
@@ -66,6 +79,7 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 * [ ] Unpooling2D, UnpoolingND
 * [ ] ConvND
 * [ ] PooingND
+* [ ] ROIPooing2D
 * [ ] Absolute and other primitive math expression.
   * [ ] sqrt
   * [ ] mean
@@ -89,7 +103,15 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
   * [ ] Concat
   * [ ] Copy
   * [ ] GetItem
+* Loss
+  * [ ] SoftmaxCrossEntropy
 * [ ] T.B.W.
+
+## For developers
+
+### Inspect generated model
+
+You can use Netron: https://github.com/lutzroeder/netron/
 
 ## Tests
 

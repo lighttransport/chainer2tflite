@@ -31,6 +31,8 @@ from .tflite import SubGraph
 
 from . import serialize_ops
 
+from . import convert_dropout
+
 # default log format
 default_fmt = logging.Formatter(
     '[%(asctime)s] %(levelname)s '
@@ -1691,6 +1693,13 @@ class TensorFlowLiteConverter(object):
 
             serialize_ops.SerializeOpMul(tf_serializer, input_ids[0],
                                          input_ids[1], output_id)
+
+        elif func.label == 'Dropout':
+
+            assert(len(func.inputs) > 0)
+
+            # Require non-trivial conversion for Dropput
+            convert_dropout.ConvertDropout(self, tf_serializer, func.inputs[0], layer_name, parent_layer_names[0], func.dropout_ratio)
 
         else:
 

@@ -8,7 +8,10 @@ from .tflite import OperatorCode
 from .tflite import BuiltinOperator
 from .tflite import BuiltinOptions
 from .tflite import AddOptions
+from .tflite import SubOptions
 from .tflite import MulOptions
+from .tflite import DivOptions
+from .tflite import FloorDivOptions
 from .tflite import ReshapeOptions
 from .tflite import ResizeBilinearOptions
 from .tflite import Conv2DOptions
@@ -427,10 +430,20 @@ def SerializeOpSub(serializer, x_id, y_id, output_id):
     serializer.builder.PrependInt32(output_id)
     outputs = serializer.builder.EndVector(num_outputs)
 
+    # Options
+    activation_function = 0  # 'NONE'
+    tflite.SubOptions.SubOptionsStart(serializer.builder)
+    tflite.SubOptions.SubOptionsAddFusedActivationFunction(
+        serializer.builder, activation_function)
+    tf_options = tflite.AddOptions.SubOptionsEnd(serializer.builder)
+
     tflite.Operator.OperatorStart(serializer.builder)
     tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
     tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
     tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder, tflite.BuiltinOptions.BuiltinOptions.SubOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
     op = tflite.Operator.OperatorEnd(serializer.builder)
 
     serializer.operators.append(op)
@@ -475,6 +488,43 @@ def SerializeOpMul(serializer, x_id, y_id, output_id):
 
     return op
 
+def SerializeOpDiv(serializer, x_id, y_id, output_id):
+
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.DIV)
+
+    # Inputs
+    num_inputs = 2
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(y_id)
+    serializer.builder.PrependInt32(x_id)
+    inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    outputs = serializer.builder.EndVector(num_outputs)
+
+    # Options
+    activation_function = 0  # 'NONE'
+    tflite.DivOptions.DivOptionsStart(serializer.builder)
+    tflite.DivOptions.DivOptionsAddFusedActivationFunction(
+        serializer.builder, activation_function)
+    tf_options = tflite.DivOptions.DivOptionsEnd(serializer.builder)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder, tflite.BuiltinOptions.BuiltinOptions.DivOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
 
 def SerializeOpFloor(serializer, input_id, output_id):
 
@@ -497,6 +547,45 @@ def SerializeOpFloor(serializer, input_id, output_id):
     tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
     tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
     tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeOpFloorDiv(serializer, x_id, y_id, output_id):
+
+    # floor(x / y)
+
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.FLOOR_DIV)
+
+    # Options
+    tflite.FloorDivOptions.FloorDivOptionsStart(serializer.builder)
+    # No parameter
+    tf_options = tflite.FloorDivOptions.FloorDivOptionsEnd(
+        serializer.builder)
+
+    # Inputs
+    num_inputs = 2
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(y_id)
+    serializer.builder.PrependInt32(x_id)
+    inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder, tflite.BuiltinOptions.BuiltinOptions.FloorDivOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
     op = tflite.Operator.OperatorEnd(serializer.builder)
 
     serializer.operators.append(op)
@@ -1021,3 +1110,44 @@ def SerializeOpConcatenation(serializer, input_ids, output_id, axis):
     serializer.operators.append(op)
 
     return op
+
+def SerializeOpFill(serializer, input_id, constant_id, output_id):
+    """Serialize Fill op.
+
+    Args:
+
+        input_id (int): A 1D tensor which contains shape size.
+        constant_id (int): A 0D tensor which contains constant value used for filling.
+        output_id (int): Output Tensor id.
+
+    """
+
+    serializer.logger.info(
+        "fill. input = {}, constant = {}, output = {}".format(
+            input_id, constant_id, output_id))
+    tf_opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.FILL)
+
+    # Inputs
+    num_inputs = 2
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(constant_id)
+    serializer.builder.PrependInt32(input_id)
+    tf_inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    tf_outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, tf_inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, tf_outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, tf_opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
