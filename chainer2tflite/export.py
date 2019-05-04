@@ -1613,7 +1613,7 @@ class TensorFlowLiteConverter(object):
                 if inp.name in self.input_names:
                     # Placeholder input
                     input_id = tf_serializer.SerializeTensor(
-                        inp.name, inp.data.dtype, inp.shape, None)
+                        inp.name, inp.dtype, inp.shape, None)
                     self.inputs[inp.name] = input_id
                 elif parent_layer_names[i] == 'data':
                     # Constant
@@ -1642,7 +1642,58 @@ class TensorFlowLiteConverter(object):
 
             serialize_ops.SerializeOpSub(tf_serializer, input_ids[0],
                                          input_ids[1], output_id)
+
+        elif func.label == '_ * _':
+            # Mul
+
+            if len(func.inputs) != 2:
+                logger.fatal(
+                    'The number of inputs for `Mul` op must be two(2) but got got {}'
+                    .format(len(func.inputs)))
+
+            for _input in func.inputs:
+                logger.info('Mul in %s(id %d)', self._get_parent_name(_input),
+                            id(_input))
+
+            input_ids = []
+
+            for (i, inp) in enumerate(func.inputs):
+                # input
+                if inp.name in self.input_names:
+                    # Placeholder input
+                    input_id = tf_serializer.SerializeTensor(
+                        inp.name, inp.dtype, inp.shape, None)
+                    self.inputs[inp.name] = input_id
+                elif parent_layer_names[i] == 'data':
+                    # Constant
+                    input_id = tf_serializer.SerializeTensor(
+                        layer_name + '_input'.format(i), inp.data.dtype,
+                        inp.shape, inp.data)
+                else:
+                    input_id = tf_serializer.FindConnection(
+                        parent_layer_names[i])
+                    # There should have valid connection
+                    if input_id is None:
+                        logger.fatal('{} not found in connections'.format(
+                            parent_layer_names[i]))
+                        raise
+
+                input_ids.append(input_id)
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+
+            output_name = layer_name + '_0'
+            output_id = tf_serializer.SerializeTensor(output_name, 'float32',
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            serialize_ops.SerializeOpMul(tf_serializer, input_ids[0],
+                                         input_ids[1], output_id)
+
         else:
+
             logger.fatal("Unknown or unsupported function/link : %s",
                          func.label)
             raise
@@ -1655,9 +1706,12 @@ class TensorFlowLiteConverter(object):
             self.input_names.append(_inp.name)
 
         logger.info('input names = {}'.format(self.input_names))
+        logger.info('outputs = {}'.format(outputs))
 
         dumped_list = _dump_graph(outputs)
-        logger.debug('dumpped_list = %s', dumped_list)
+        logger.debug('dumped_list = %s', dumped_list)
+        assert(len(dumped_list) > 0)
+
         f = None
         tf_serializer = TensorFlowLiteSerializer()
 
@@ -1712,7 +1766,7 @@ def export(model, args, filename):
                 assert isinstance(arg, chainer.Variable)
                 if args[i].name is None:
                     # assign name
-                    args[i].name = 'input0'
+                    args[i].name = 'input{}'.format(i)
 
             inputs.append(args[i])
 
@@ -1738,13 +1792,14 @@ def export(model, args, filename):
 
     for inp in inputs:
         assert inp.name is not None
-        logger.info('DBG: input name = {}'.format(inp.name))
+        logger.info('DBG: Chainer input name = {}'.format(inp.name))
 
     if isinstance(outputs, variable.Variable):
         outputs = [outputs]
     assert isinstance(outputs, (tuple, list))
 
-    logger.info('# of outpus = {}'.format(len(outputs)))
+    logger.info('# of inputs = {}'.format(len(inputs)))
+    logger.info('# of outputs = {}'.format(len(outputs)))
 
     for i, outp in enumerate(outputs):
         assert isinstance(outp, variable.Variable)

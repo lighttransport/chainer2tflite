@@ -8,6 +8,7 @@ from .tflite import OperatorCode
 from .tflite import BuiltinOperator
 from .tflite import BuiltinOptions
 from .tflite import AddOptions
+from .tflite import MulOptions
 from .tflite import ReshapeOptions
 from .tflite import ResizeBilinearOptions
 from .tflite import Conv2DOptions
@@ -418,6 +419,99 @@ def SerializeOpSub(serializer, x_id, y_id, output_id):
     tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
     serializer.builder.PrependInt32(y_id)
     serializer.builder.PrependInt32(x_id)
+    inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeOpMul(serializer, x_id, y_id, output_id):
+
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.MUL)
+
+    # Inputs
+    num_inputs = 2
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(y_id)
+    serializer.builder.PrependInt32(x_id)
+    inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    outputs = serializer.builder.EndVector(num_outputs)
+
+    # Options
+    activation_function = 0  # 'NONE'
+    tflite.MulOptions.MulOptionsStart(serializer.builder)
+    tflite.MulOptions.MulOptionsAddFusedActivationFunction(
+        serializer.builder, activation_function)
+    tf_options = tflite.MulOptions.MulOptionsEnd(serializer.builder)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder, tflite.BuiltinOptions.BuiltinOptions.MulOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+
+def SerializeOpFloor(serializer, input_id, output_id):
+
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.FLOOR)
+
+    # Inputs
+    num_inputs = 1
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(input_id)
+    inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeOpCeil(serializer, input_id, output_id):
+
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.CEIL)
+
+    # Inputs
+    num_inputs = 1
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(input_id)
     inputs = serializer.builder.EndVector(num_inputs)
 
     # Outputs
