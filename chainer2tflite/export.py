@@ -1159,6 +1159,333 @@ class TensorFlowLiteConverter(object):
             serialize_ops.SerializeOpResizeNearestNeighbor(tf_serializer, input_id,
                                                     output_id,
                                                     new_shape_id)
+
+        elif func.label == 'Transpose':
+
+            assert (len(func.inputs) == 1)
+
+            # input
+            inp = func.inputs[0]
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name, inp.dtype, inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input0', inp.dtype, inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[0]))
+                    raise
+
+            # perm
+            if isinstance(func.axes, int):
+                func.axes = [func.axes]
+
+            perm = np.array(func.axes).astype(np.int32)
+
+            perm_id = tf_serializer.SerializeTensor(layer_name + '_perm',
+                                                      perm.dtype,
+                                                      perm.shape,
+                                                      perm)
+
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      _output().dtype,
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            serialize_ops.SerializeOpTranspose(tf_serializer, input_id, perm_id, output_id)
+
+        elif func.label == 'Tile':
+
+            assert (len(func.inputs) == 1)
+
+            # input
+            inp = func.inputs[0]
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name, inp.dtype, inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input0', inp.dtype, inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[0]))
+                    raise
+
+            # multiples
+            if isinstance(func.reps, int):
+                func.reps = [func.reps]
+
+            multiples = np.array(func.reps).astype(np.int32)
+            multiples_id = tf_serializer.SerializeTensor(layer_name + '_multiples',
+                                                      multiples.dtype,
+                                                      multiples.shape,
+                                                      multiples)
+
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      _output().dtype,
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            serialize_ops.SerializeOpTile(tf_serializer, input_id, multiples_id, output_id)
+
+        elif func.label == 'ExpandDims':
+
+            assert (len(func.inputs) == 1)
+
+            # input
+            inp = func.inputs[0]
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name, inp.dtype, inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input0', inp.dtype, inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[0]))
+                    raise
+
+            # axis
+            axis = np.array(func.axis).astype(np.int32)
+            axis_id = tf_serializer.SerializeTensor(layer_name + '_axis',
+                                                      axis.dtype,
+                                                      axis.shape,
+                                                      axis)
+
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      _output().dtype,
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            serialize_ops.SerializeOpExpandDims(tf_serializer, input_id, axis_id, output_id)
+
+
+        elif func.label == 'Squeeze':
+
+            assert (len(func.inputs) == 1)
+
+            # input
+            inp = func.inputs[0]
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name, inp.dtype, inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input0', inp.dtype, inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[0]))
+                    raise
+
+            # axis. 1D array
+            axis = []
+            if func.axis is None:
+                for i, s in enumerate(func.inputs[0].shape):
+                    if s == 1:
+                        axis.append(i)
+            else:
+                axis = func.axis
+
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      _output().dtype,
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            serialize_ops.SerializeOpSqueeze(tf_serializer, input_id, output_id, axis)
+
+        elif func.label == 'Concat':
+
+            # input
+            input_ids = []
+            for (i, inp) in enumerate(func.inputs):
+
+                if inp.name in self.input_names:
+                    # Placeholder input
+                    input_id = tf_serializer.SerializeTensor(
+                        inp.name, inp.dtype, inp.shape, None)
+                    self.inputs[inp.name] = input_id
+                elif parent_layer_names[i] == 'data':
+                    input_id = tf_serializer.SerializeTensor(
+                        layer_name + '_input{}'.format(i), 'float32', inp.shape, inp.data)
+                else:
+                    input_id = tf_serializer.FindConnection(parent_layer_names[i])
+                    # There should have valid connection
+                    if input_id is None:
+                        logger.fatal('{} not found in connections'.format(
+                            parent_layer_names[i]))
+                        raise
+
+
+                input_ids.append(input_id)
+
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      _output().dtype,
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            # axis param
+            axis = func.axis
+
+            serialize_ops.SerializeOpConcatenation(tf_serializer, input_ids, output_id, axis)
+
+        elif func.label == 'SplitAxis':
+
+            inp = func.inputs[0]
+
+            # input
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name, inp.dtype, inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input{}'.format(0), 'float32', inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[i]))
+                    raise
+
+
+            # output
+            output_ids = []
+            for (i, outp) in enumerate(func.outputs):
+
+                output_id = tf_serializer.SerializeTensor(layer_name + '_{}'.format(i),
+                                                          outp().dtype,
+                                                          outp().shape, None)
+
+                output_ids.append(input_id)
+
+                tf_serializer.RegisterConnection(layer_name + '_{}'.format(i), output_id)
+
+            logger.fatal('SplitAxis is not yet supported(need to implement multiple outputs in chainer2tflite firstly)')
+            raise
+
+        elif func.label == 'Space2Depth':
+
+            inp = func.inputs[0]
+            in_data = inp.data
+
+            # Must be 4D tensor
+            # Assume NCHW
+            # Apply NHWC conversion
+            in_shape = (inp.shape[0], inp.shape[2], inp.shape[3],
+                        inp.shape[1])
+            if in_data is not None:
+                in_data = np.transpose(inp.data, (0, 2, 3, 1))
+
+            format_prefix = '_nhwc'
+
+
+            # input
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name + format_prefix, inp.dtype, in_shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input{}'.format(0) + format_prefix, inp.dtype, in_shape, in_data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[i]))
+                    raise
+
+
+            # output
+            outp = func.outputs[0]
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0' + format_prefix,
+                                                      outp().dtype,
+                                                      outp().shape, None)
+
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            # block size
+            block_size = func.r
+
+            serialize_ops.SerializeOpSpaceToDepth(tf_serializer, input_id, output_id, block_size)
+
+        elif func.label == 'Cast':
+
+            inp = func.inputs[0]
+
+            # input
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name, inp.dtype, inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input{}'.format(0), inp.dtype, inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[i]))
+                    raise
+
+
+            # output
+            outp = func.outputs[0]
+            output_id = tf_serializer.SerializeTensor(layer_name,
+                                                      outp().dtype,
+                                                      outp().shape, None)
+
+
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            serialize_ops.SerializeOpCast(tf_serializer, input_id, output_id)
+
         elif func.label == 'ELU':
 
             assert (len(func.inputs) == 1)
@@ -1365,22 +1692,22 @@ class TensorFlowLiteConverter(object):
 
             # input
             input_ids = []
-            for inp in func.inputs:
+            for (i, inp) in enumerate(func.inputs):
 
                 if inp.name in self.input_names:
                     # Placeholder input
                     input_id = tf_serializer.SerializeTensor(
                         inp.name, 'float32', inp.shape, None)
                     self.inputs[inp.name] = input_id
-                elif parent_layer_names[0] == 'data':
+                elif parent_layer_names[i] == 'data':
                     input_id = tf_serializer.SerializeTensor(
-                        layer_name + '_input0', 'float32', inp.shape, inp.data)
+                        layer_name + '_input{}'.format(i), 'float32', inp.shape, inp.data)
                 else:
-                    input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                    input_id = tf_serializer.FindConnection(parent_layer_names[i])
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
-                            parent_layer_names[0]))
+                            parent_layer_names[i]))
                         raise
 
 
@@ -1412,22 +1739,22 @@ class TensorFlowLiteConverter(object):
 
             # input
             input_ids = []
-            for inp in func.inputs:
+            for (i, inp) in enumerate(func.inputs):
 
                 if inp.name in self.input_names:
                     # Placeholder input
                     input_id = tf_serializer.SerializeTensor(
-                        inp.name, 'float32', inp.shape, None)
+                        inp.name, inp.dtype, inp.shape, None)
                     self.inputs[inp.name] = input_id
-                elif parent_layer_names[0] == 'data':
+                elif parent_layer_names[i] == 'data':
                     input_id = tf_serializer.SerializeTensor(
-                        layer_name + '_input0', 'float32', inp.shape, inp.data)
+                        layer_name + '_input{}'.format(i), inp.dtype, inp.shape, inp.data)
                 else:
-                    input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                    input_id = tf_serializer.FindConnection(parent_layer_names[i])
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
-                            parent_layer_names[0]))
+                            parent_layer_names[i]))
                         raise
 
 

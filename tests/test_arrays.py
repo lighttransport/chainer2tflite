@@ -5,6 +5,8 @@ import chainer.links as L
 from chainer2tflite.testing import input_generator
 from tests.helper import TFLiteModelTest
 
+import numpy
+
 import pytest
 
 class TestVStack1D(TFLiteModelTest):
@@ -119,6 +121,131 @@ class TestPad3D(TFLiteModelTest):
 
     def test_output(self):
         self.expect(self.model, self.x)
+
+class TestTranspose(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [axes]
+        self.model = Model(F.transpose, [(0, 2, 3, 1)])
+        self.x = input_generator.increasing(1, 3, 6, 7)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
+class TestExpandDims(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [axis]
+        self.model = Model(F.expand_dims, [0])
+        self.x = input_generator.increasing(1, 3, 3)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
+class TestExpandDims1(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [axis]
+        self.model = Model(F.expand_dims, [1])
+        self.x = input_generator.increasing(1, 3, 3)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
+class TestExpandDims2(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [axis]
+        self.model = Model(F.expand_dims, [2])
+        self.x = input_generator.increasing(1, 3, 3)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
+class TestTile(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [replications]
+        self.model = Model(F.tile, [(2, 3)])
+        self.x = input_generator.increasing(3, 3)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
+class TestSqueezeNoAxis(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [axis]
+        self.model = Model(F.squeeze, [None])
+        self.x = input_generator.increasing(1, 3, 1, 2)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
+class TestSqueeze(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [axis]
+        self.model = Model(F.squeeze, [(2, 4)])
+        self.x = input_generator.increasing(1, 3, 1, 2, 1)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
+class TestConcat(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [axis]
+        self.model = ModelWithTwoArgs(F.concat)
+        self.x = input_generator.increasing(1, 3, 4)
+        self.y = input_generator.increasing(1, 3, 4)
+
+    def test_output(self):
+        self.expect(self.model, [self.x, self.y])
+
+class TestSpaceToDepth(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [downscaling_factor]
+        self.model = Model(F.space2depth, [2])
+        self.x = input_generator.increasing(1, 12, 6, 6)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
+class TestCast(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [typ]
+        self.model = Model(F.cast, [numpy.int32])
+        self.x = input_generator.increasing(1, 6)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
+
+# TODO(LTE): Split requires multiple output support in the converter.
+#class TestSplitAxis(TFLiteModelTest):
+#
+#    def setUp(self):
+#
+#        # arg = [indices_or_selections, axis]
+#        self.model = Model(F.split_axis, [[2], 1])
+#        self.x = input_generator.increasing(1, 6)
+#
+#    def test_output(self):
+#        self.expect(self.model, self.x)
+
 
 class ModelWithTwoArgs(chainer.Chain):
 
