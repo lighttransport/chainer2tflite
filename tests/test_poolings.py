@@ -52,6 +52,32 @@ class TestMaxPooling2DPad1(TFLiteModelTest):
     def test_output(self):
         self.expect(self.model, self.x)
 
+
+class TestUnpooling2D(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [kernel_size, stride, padding]
+        # (stride=None) = use kernel_size
+        self.model = Model(F.unpooling_2d, [3, None, 0], False)
+        self.x = input_generator.increasing(1, 3, 6, 6)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
+
+class TestUnpooling2D_2x(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [kernel_size, stride, padding]
+        # (stride=None) = use kernel_size
+        self.model = Model(F.unpooling_2d, [2, None, 0], False)
+        self.x = input_generator.increasing(1, 3, 6, 6)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
 class Model(chainer.Chain):
 
     def __init__(self, ops, args, cover_all):
@@ -65,4 +91,3 @@ class Model(chainer.Chain):
             return self.ops(*([x] + self.args), cover_all=self.cover_all)
         else:
             return self.ops(*([x] + self.args))
-

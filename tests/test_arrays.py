@@ -40,7 +40,6 @@ class TestVStack3D(TFLiteModelTest):
     def test_output(self):
         self.expect(self.model, [self.x, self.y])
 
-@pytest.mark.skip(reason='Test fail due to internal NCHW -> NHWC conversion. Need to add feature of diabling tensor reshaping in chainer2tflite')
 class TestVStack4D(TFLiteModelTest):
 
     def setUp(self):
@@ -85,7 +84,6 @@ class TestHStack3D(TFLiteModelTest):
     def test_output(self):
         self.expect(self.model, [self.x, self.y])
 
-@pytest.mark.skip(reason='Test fail due to internal NCHW -> NHWC conversion. Need to add feature of diabling tensor reshaping in chainer2tflite')
 class TestHStack4D(TFLiteModelTest):
 
     def setUp(self):

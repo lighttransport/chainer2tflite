@@ -29,35 +29,36 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 
 ## Supported layers/ops
 
-| Chainer                 | tflite                    | Comment                                  |
-| ----------------------- | ------------------------- | ---------------------------------------- |
-| Add                     | ADD                       | two inputs only                          |
-| Sub                     | SUB                       |                                          |
-| Mul                     | MUL                       |                                          |
-| Div                     | DIV                       |                                          |
-| Reshape                 | RESHAPE                   |                                          |
-| LinearFunction          | FULLY_CONNECTED           | activation=None                          |
-| ReLU                    | RELU                      |                                          |
-| LeakyReLU               | REAKY_RELU                |                                          |
-| ResizeImages            | RESIZE_BILINEAR           | `align_corners=true`                     |
-| Pad                     | PADV2                     | Support constant value                   |
-| AveragePooling2D        | AVERAGE_POOL_2D           |                                          |
-| MaxPooling2D            | MAX_POOL_2D               |                                          |
-| Convolution2D           | CONV_2D                   | dilated=1                                |
-| DilatedConvolution2D    | CONV_2D                   | dilated=N                                |
-| SoftMax                 | SOFTMAX                   | `axis` in Chainer must be last dim       |
-| LogSoftMax              | LOG_SOFTMAX               | `axis` in Chainer must be last dim       |
-| Deconvolution2D         | CONV_2D_TRANSPOSE         |                                          |
-| Vstak                   | CONCATENATION OR PACK(1D) | axis=0                                   |
-| Hstak                   | CONCATENATION             | axis=1                                   |
+| Chainer                 | tflite                    | Comment                                     |
+| ----------------------- | ------------------------- | ------------------------------------------- |
+| Add                     | ADD                       | two inputs only                             |
+| Sub                     | SUB                       |                                             |
+| Mul                     | MUL                       |                                             |
+| Div                     | DIV                       |                                             |
+| Reshape                 | RESHAPE                   |                                             |
+| LinearFunction          | FULLY_CONNECTED           | activation=None                             |
+| ReLU                    | RELU                      |                                             |
+| LeakyReLU               | REAKY_RELU                |                                             |
+| ResizeImages            | RESIZE_BILINEAR           | `align_corners=true`                        |
+| Pad                     | PADV2                     | Support constant value                      |
+| AveragePooling2D        | AVERAGE_POOL_2D           |                                             |
+| MaxPooling2D            | MAX_POOL_2D               |                                             |
+| Convolution2D           | CONV_2D                   | dilated=1                                   |
+| DilatedConvolution2D    | CONV_2D                   | dilated=N                                   |
+| SoftMax                 | SOFTMAX                   | `axis` in Chainer must be last dim          |
+| LogSoftMax              | LOG_SOFTMAX               | `axis` in Chainer must be last dim          |
+| Deconvolution2D         | CONV_2D_TRANSPOSE         |                                             |
+| Vstak                   | CONCATENATION OR PACK(1D) | axis=0                                      |
+| Hstak                   | CONCATENATION             | axis=1                                      |
+| Unpooling2D             | RESIZE_NEAREST_NEIGHBOR   | integer scaling factor only(e.g. 2.0, 3.0)  |
 
 
 ## Conditionally supported layers/ops
 
-| Chainer                 | tflite                    | Comment                                  |
-| ----------------------- | ------------------------- | ---------------------------------------- |
-| Dropout                 | See comments              | Use deterministic random-valued tensor   |
-| ELU                     | ELU                       | tflite `r1.14` or later                  |
+| Chainer                 | tflite                    | Comment                                     |
+| ----------------------- | ------------------------- | ------------------------------------------- |
+| Dropout                 | See comments              | Use deterministic random-valued tensor      |
+| ELU                     | ELU                       | tflite `r1.14` or later                     |
 
 See `chainer2tflite/convert_dropout.py` for details on `Dropout` conversion.
 At least we've confirmed unit test passes by force setting same seed value for random number generation.
@@ -76,10 +77,11 @@ Although tflite serializer(`chainer2tflite/serialize_ops.py`) supports `FLOOR` a
 
 ### Not supported(or TODO)
 
-* [ ] Unpooling2D, UnpoolingND
-* [ ] ConvND
-* [ ] PooingND
-* [ ] ROIPooing2D
+* Pooling
+  * [ ] UnpoolingND
+  * [ ] ConvND
+  * [ ] PooingND
+  * [ ] ROIPooing2D
 * [ ] Absolute and other primitive math expression.
   * [ ] sqrt
   * [ ] mean
@@ -105,6 +107,7 @@ Although tflite serializer(`chainer2tflite/serialize_ops.py`) supports `FLOOR` a
   * [ ] GetItem
 * Loss
   * [ ] SoftmaxCrossEntropy
+* [ ] TOP_K
 * [ ] T.B.W.
 
 ## For developers

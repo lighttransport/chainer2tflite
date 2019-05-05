@@ -14,6 +14,7 @@ from .tflite import DivOptions
 from .tflite import FloorDivOptions
 from .tflite import ReshapeOptions
 from .tflite import ResizeBilinearOptions
+from .tflite import ResizeNearestNeighborOptions
 from .tflite import Conv2DOptions
 from .tflite import Pool2DOptions
 from .tflite import PadOptions
@@ -154,6 +155,77 @@ def SerializeConv2D(serializer, input_id, filter_id, bias_id,
         tflite.BuiltinOptions.BuiltinOptions.Conv2DOptions)
     tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
     serializer.logger.debug('opcode_id = {}'.format(opcode_id))
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeTransposeConv(serializer, output_shape_id, weights_id, input_id,
+                    output_id, padding, stride):
+    """Serialize TransposeConv.
+
+    Args:
+        serializer: tflite serializer.
+        output_shape_id(int): Id for a Tensor contains output shape size.
+        weights_id(int): Weights Tensor id.
+        input_id(int): Input Tensor id.
+        output_id(int): Output Tensor id.
+        padding(string): padding('SAME' or 'VALID')
+        stride([int]): [stride_w, stride_h].
+
+    """
+
+    serializer.logger.info(
+        "transpose_conv. output_shape = {}, weights = {}, input = {}, output = {},  stride = {}, padding = {}".format(
+            output_shape_id, weights_id, input_id, output_id, stride, padding))
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.TRANSPOSE_CONV)
+
+    # Options
+    if padding == 'VALID':
+        padding_type = tflite.Padding.Padding.VALID
+    elif padding == 'SAME':
+        padding_type = tflite.Padding.Padding.SAME
+    else:
+        print('Unsupported padding: ', padding)
+        raise
+
+
+    tflite.TransposeConvOptions.TransposeConvOptionsStart(serializer.builder)
+    tflite.TransposeConvOptions.TransposeConvOptionsAddFusedActivationFunction(
+        serializer.builder, activation_function_type)
+    tflite.TransposeConvOptions.TransposeConvOptionsAddPadding(
+        serializer.builder, padding_type)
+    tflite.TransposeConvOptions.TransposeConvOptionsAddStrideW(
+        serializer.builder, stride[0])
+    tflite.TransposeConvOptions.TransposeConvOptionsAddStrideH(
+        serializer.builder, stride[1])
+    tf_options = tflite.TransposeConvOptions.Conv2DOptionsEnd(
+        serializer.builder)
+
+    # Inputs
+    num_inputs = 3
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(input_id)
+    serializer.builder.PrependInt32(weights_id)
+    serializer.builder.PrependInt32(output_shape_id)
+    tf_inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    tf_outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, tf_inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, tf_outputs)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder,
+        tflite.BuiltinOptions.BuiltinOptions.TransposeConvOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
     tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
     op = tflite.Operator.OperatorEnd(serializer.builder)
 
@@ -322,7 +394,7 @@ def SerializeMaxPooling2D(serializer, input_id,
     return op
 
 
-def SerializeOpResizeImages(serializer, input_id, output_id, new_shape_id):
+def SerializeOpResizeBilinear(serializer, input_id, output_id, new_shape_id):
 
     # NOTE(LTE): Chainer supports bilinear interpolation only.
     # Map to resize_bilinear + align_corners = true.
@@ -365,6 +437,50 @@ def SerializeOpResizeImages(serializer, input_id, output_id, new_shape_id):
         tflite.BuiltinOptions.BuiltinOptions.ResizeBilinearOptions)
     tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
     serializer.logger.debug('opcode_id = {}'.format(opcode_id))
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeOpResizeNearestNeighbor(serializer, input_id, output_id, new_shape_id):
+
+    serializer.logger.info(
+        "resize_nearest_neighbor. input = {}, output = {}, new_shape = {}".format(
+            input_id, output_id, new_shape_id))
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.RESIZE_NEAREST_NEIGHBOR)
+
+    # Options
+    # TODO(LTE): Do we need to set align_corners?
+    tflite.ResizeBilinearOptions.ResizeBilinearOptionsStart(serializer.builder)
+    #tflite.ResizeBilinearOptions.ResizeBilinearOptionsAddAlignCorners(
+    #    serializer.builder, True)
+    tf_options = tflite.ResizeBilinearOptions.ResizeBilinearOptionsEnd(
+        serializer.builder)
+
+    # Inputs
+    # new_shape first.
+    num_inputs = 2
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(new_shape_id)
+    serializer.builder.PrependInt32(input_id)
+    tf_inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    tf_outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, tf_inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, tf_outputs)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder,
+        tflite.BuiltinOptions.BuiltinOptions.ResizeNearestNeighborOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
     tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
     op = tflite.Operator.OperatorEnd(serializer.builder)
 

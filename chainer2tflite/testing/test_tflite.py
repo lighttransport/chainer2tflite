@@ -103,8 +103,9 @@ def check_model_expect(test_path, input_names=None):
         for ref_name, ref_value in inputs.items():
             print('{}.shape = {}'.format(ref_name, ref_value.shape))
 
-            if len(ref_value.shape) == 4:
-                # Assume (batch, C, H, W)
+            # Determine NHWC -> NCHW conversion by looking name of tensor.
+            # TODO(LTE): Determine NHWC -> NCHW conversion by inspecting this input tensor is connected to.
+            if len(ref_value.shape) == 4 and ref_name.endswith('_nhwc'):
                 # Convert to (batch, H, W, C)(TensorFlow's default)
                 ref_value = np.transpose(ref_value, (0, 2, 3, 1))
 
@@ -120,6 +121,9 @@ def check_model_expect(test_path, input_names=None):
                 print('input[{}] not found in tflite inputs'.format(ref_name))
                 raise
 
+        cn_out = outputs[rt_output_names[0]]
+        print('cn out shape = ', cn_out.shape)
+
         try:
             interpreter.invoke()
         except:
@@ -129,15 +133,16 @@ def check_model_expect(test_path, input_names=None):
             raise
 
         rt_out = interpreter.get_tensor(output_details[0]['index'])
-        cn_out = outputs[rt_output_names[0]]
+        rt_out_name = rt_output_names[0]
 
         print('tflite out shape = ', rt_out.shape)
-        print('cn out shape = ', cn_out.shape)
 
         print('tflite out', rt_out)
 
-        if len(rt_out.shape) == 4:
-            # Convert to NCHW for comparison with Chainer's result
+        # Determine NHWC -> NCHW conversion by looking name of tensor.
+        # TODO(LTE): Determine NHWC -> NCHW conversion by inspecting this input tensor is connected to.
+        if len(rt_out.shape) == 4 and rt_out_name.endswith('_nhwc'):
+            # Convert to NCHW for comparing with Chainer's result
             rt_out = np.transpose(rt_out, (0, 3, 1, 2))
 
         # Its a dinner time! Taste it!
