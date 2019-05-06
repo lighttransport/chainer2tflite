@@ -51,6 +51,11 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 | Vstak                   | CONCATENATION OR PACK(1D) | axis=0                                      |
 | Hstak                   | CONCATENATION             | axis=1                                      |
 | Unpooling2D             | RESIZE_NEAREST_NEIGHBOR   | integer scaling factor only(e.g. 2.0, 3.0)  |
+| Transpose               | TRANSPOSE                 |                                             |
+| Squeeze                 | SQUEEZE                   |                                             |
+| Tile                    | TILE                      |                                             |
+| ExpandDims              | EXPAND_DIMS               |                                             |
+| Concat                  | CONCATENATION             |                                             |
 
 
 ## Conditionally supported layers/ops
@@ -59,6 +64,8 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 | ----------------------- | ------------------------- | ------------------------------------------- |
 | Dropout                 | See comments              | Use deterministic random-valued tensor      |
 | ELU                     | ELU                       | tflite `r1.14` or later                     |
+| Space2Depth             | SPACE_TO_DEPTH            | 4D Tensor only                              |
+| Cast                    | CAST                      | `float32`, `int32` only                     |
 
 See `chainer2tflite/convert_dropout.py` for details on `Dropout` conversion.
 At least we've confirmed unit test passes by force setting same seed value for random number generation.
@@ -90,19 +97,14 @@ Although tflite serializer(`chainer2tflite/serialize_ops.py`) supports `FLOOR` a
 * [ ] ARG_MAX, ARG_MIN
 * Normalization
   * [ ] BatchNormalization
+    * Decompose into some math ops?
   * [ ] FixedBatchNormalization
   * [ ] LocalResponseNormalization
   * [ ] NormalizeL2
 * Array
-  * [ ] Depth2Space, Space2Depth
+  * [ ] Depth2Space(tflite does not support yet)
   * [ ] SplitAxis
-  * [ ] Squeeze
-  * [ ] Tile
-  * [ ] Transpose
-  * [ ] ExpandDims
   * [ ] Where
-  * [ ] Cast
-  * [ ] Concat
   * [ ] Copy
   * [ ] GetItem
 * Loss
@@ -167,7 +169,8 @@ See `examples` directory.
 
 ## TODO
 
-* [ ] Automatic handling of NCHW and NHWC conversion.
+* [ ] Remove redundant NCHW and NHWC conversion.
+  * For example, Currently we insert `Transpose` op for each `Conv2D` op. When the network contains sequence of `Conv2D`, we should insert `Transpose` for the beggining and the end of `Conv2D`s.
 * [ ] Support multiple outputs graph.
 * [ ] Android demo(train with Chainer, run tflite on mobile).
 * [ ] Support TensorFlow-Lite micro(experimental) to run Chainer-trained model on IoT devices

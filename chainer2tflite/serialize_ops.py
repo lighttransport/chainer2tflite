@@ -24,6 +24,8 @@ from .tflite import PackOptions
 from .tflite import ConcatenationOptions
 from .tflite import SqueezeOptions
 
+from .tflite import LocalResponseNormalization
+
 from .tflite import SpaceToDepthOptions
 
 from .tflite import TransposeOptions
@@ -1585,6 +1587,61 @@ def SerializeOpCast(serializer, input_id, output_id):
     tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
     tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
     tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+
+def SerializeOpLocalResponseNormalization(serializer, input_id, output_id):
+    """Serialize LocalResponseNormalization op.
+
+    Args:
+
+        input_id (int): Input tensor id.
+        output_id (int): Output tensor id.
+        radius(int): Radius
+        bias(float): Bias
+        alpha(float): Alpha
+        beta(float): Beta
+
+    """
+
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.LOCAL_RESPONSE_NORMALIZATION)
+
+    # Options
+    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationOptionsStart(serializer.builder)
+    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationAddRadius(serializer.builder, radius)
+    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationAddBias(serializer.builder, bias)
+    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationAddAlpha(serializer.builder, alpha)
+    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationAddBeta(serializer.builder, beta)
+    #tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationAddBlockSize(serializer.builder, block_size)
+    tf_options = tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationOptionsEnd(serializer.builder)
+
+    # Inputs
+    num_inputs = 1
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(input_id)
+    inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    outputs = serializer.builder.EndVector(num_outputs)
+
+    # We won't need data type parameter for input and output.
+    # So do not write out CastOptions
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder, tflite.BuiltinOptions.BuiltinOptions.LocalResponseNormalizationOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
     op = tflite.Operator.OperatorEnd(serializer.builder)
 
     serializer.operators.append(op)
