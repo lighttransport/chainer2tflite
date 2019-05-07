@@ -310,7 +310,7 @@ class TensorFlowLiteSerializer:
         tflite.SubGraph.SubGraphStartOutputsVector(self.builder, len(outputs))
         for o in reversed(outputs):
             self.builder.PrependInt32(o)
-        tf_outputs = self.builder.EndVector(len(inputs))
+        tf_outputs = self.builder.EndVector(len(outputs))
 
         # [Operators]
         tflite.SubGraph.SubGraphStartOperatorsVector(self.builder,
@@ -1485,6 +1485,160 @@ class TensorFlowLiteConverter(object):
             tf_serializer.RegisterConnection(layer_name, output_id)
 
             serialize_ops.SerializeOpCast(tf_serializer, input_id, output_id)
+
+        elif func.label == 'BatchNormalization':
+
+            # TODO(LTE): Gamma
+
+            # Decomposed into
+            #
+            # b * (gamma / sqrt(v))
+            #
+
+            if len(func.inputs) <= 3:
+                # Guess F.batch_normalization
+                x = func.inputs[0].get_variable().array
+                mean = x.mean(axis=func.axis)
+                var = x.var(axis=func.axis)
+                print('mean', mean)
+                print('varn', var)
+            else:
+                # guess F.fixed_batch_normalization
+                x = func.inputs[3].get_variable().array
+                mean = x.mean(axis=func.axis)
+                var = x.var(axis=func.axis)
+                print('mean', mean)
+                print('varn', var)
+
+            raise
+
+            inp = func.inputs[0]
+
+            # input
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name, inp.dtype, inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input{}'.format(0), inp.dtype, inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[i]))
+                    raise
+
+
+            # output
+            outp = func.outputs[0]
+            output_id = tf_serializer.SerializeTensor(layer_name,
+                                                      outp().dtype,
+                                                      outp().shape, None)
+
+
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            serialize_ops.SerializeOpBatchNorm(tf_serializer, input_id, output_id)
+
+        elif func.label == 'LocalResponseNormalization':
+
+
+            inp = func.inputs[0]
+
+            # Must be 4D tensor
+            assert len(inp.shape) == 4
+
+            # Assume NCHW input
+            # Apply NHWC conversion
+            in_shape = (inp.shape[0], inp.shape[2], inp.shape[3], inp.shape[1])
+            in_data = inp.data
+            if in_data is not None:
+                in_data = np.transpose(inp.data, (0, 2, 3, 1))
+
+            format_prefix = '_nhwc'
+
+            # input
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name + format_prefix, inp.dtype, in_shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input{}'.format(0) + format_prefix, inp.dtype, in_shape, in_data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[i]))
+                    raise
+
+
+            # output
+            outp = func.outputs[0]
+            output_id = tf_serializer.SerializeTensor(layer_name + format_prefix,
+                                                      outp().dtype,
+                                                      outp().shape, None)
+
+
+            # params
+            radius = int(func.n) // 2 # Width(Chainer) to radius(TensorFlow) conversion
+            bias = float(func.k)
+            alpha = float(func.alpha)
+            beta = float(func.beta)
+
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            serialize_ops.SerializeOpLocalResponseNormalization(tf_serializer, input_id, output_id, radius, bias, alpha, beta)
+
+        elif func.label == 'NormalizeL2':
+
+            inp = func.inputs[0]
+
+            format_prefix = ''
+
+            # tflite only supports the last dimension for axis
+            if isinstance(func.axis, tuple):
+                # Use the first one
+                axis = func.axis[0]
+            else:
+                axis = func.axis
+            if axis != (len(inp.shape) - 1):
+                logger.fatal('axis must be the last dimension of input Tensor, but got axis = {}, dim = {}'.format(axis, len(inp.shape)))
+                raise
+
+            # input
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name + format_prefix, inp.dtype, inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input{}'.format(0) + format_prefix, inp.dtype, inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[i]))
+                    raise
+
+
+            # output
+            outp = func.outputs[0]
+            output_id = tf_serializer.SerializeTensor(layer_name + format_prefix,
+                                                      outp().dtype,
+                                                      outp().shape, None)
+
+
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            serialize_ops.SerializeOpL2Normalization(tf_serializer, input_id, output_id)
 
         elif func.label == 'ELU':
 

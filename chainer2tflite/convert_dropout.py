@@ -32,7 +32,7 @@ def ConvertDropout(converter, serializer, inp, layer_name, parent_layer_name, dr
     #   y = x * mask
 
     #
-    # dropout in TensorFlow(Lite):
+    # dropout in TensorFlow(Lite) r1.13:
     #   keep_prob = 1 - ratio
     #
     #   [keep_prb, 1.0 + keep_prob)
@@ -108,6 +108,8 @@ def ConvertDropout(converter, serializer, inp, layer_name, parent_layer_name, dr
 
     #
     # divide(x, keep_prob)
+    # TODO(LTE): We can precompute `floor(random_tensor)` since dropout_ratio is a constant value
+    #            in inference phase.
     #
 
     divide_id = serializer.SerializeTensor(layer_name + '_divide', 'float32', inp.shape, None)
