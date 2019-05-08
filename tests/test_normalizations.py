@@ -51,6 +51,8 @@ class TestL2Norm(TFLiteModelTest):
     def test_output(self):
         self.expect(self.model, self.x)
 
+# NOTE(LTE): Disable for a while.
+# Usually BatchNormalization does not appar in inference model.
 #class TestBatchNormalization(TFLiteModelTest):
 #
 #    def setUp(self):
@@ -60,8 +62,8 @@ class TestL2Norm(TFLiteModelTest):
 #            def __init__(self):
 #                super(Model, self).__init__()
 #                with self.init_scope():
-#                    kwargs = {}
-#                    self.bn = L.BatchNormalization(5, *kwargs)
+#                    # [size]
+#                    self.bn = L.BatchNormalization(5)
 #
 #            def __call__(self, x):
 #                return self.bn(x)
@@ -71,4 +73,4 @@ class TestL2Norm(TFLiteModelTest):
 #
 #    def test_output(self):
 #        self.expect(self.model, self.x)
-
+#

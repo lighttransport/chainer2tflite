@@ -133,6 +133,18 @@ class TestTranspose(TFLiteModelTest):
     def test_output(self):
         self.expect(self.model, self.x)
 
+class TestTranspose1023(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [axes]
+        self.model = Model(F.transpose, [(1, 0, 2, 3)])
+        self.x = input_generator.increasing(1, 4, 5, 5)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
+
 class TestExpandDims(TFLiteModelTest):
 
     def setUp(self):

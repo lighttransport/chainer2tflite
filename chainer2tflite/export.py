@@ -426,6 +426,52 @@ class TensorFlowLiteConverter(object):
         # List of input names
         self.input_names = []
 
+    def _fold_depthwise_conv2d(self, funcs):
+        """
+        DepthwiseConvolution2D is decomposed into the following 3 functions.
+        Detect such a functions and remove Transpose and Reshape.
+
+        chainer.functions.array.transpose.Transpose
+        chainer.functions.array.reshape.Reshape
+        chainer.functions.connection.convolution_2d.Convolution2DFunction
+
+
+        Args:
+            funcs : List of functions
+
+
+        Returns:
+            List of functions where Transpose And Reshape func has been removed.
+        """
+
+        if len(funcs) < 3:
+            return funcs
+
+        out_funcs = []
+
+        # TODO(LTE): Refactor
+        for i in range(2, len(funcs), 3):
+
+            depthwise_conv2d = False
+
+            if (funcs[i-2].label == 'Transpose') and (funcs[i-2].axes == (1, 0, 2, 3)):
+                if funcs[i-1].label == 'Reshape':
+                    shape = funcs[i-1].outputs[0]().shape
+                    if (len(shape) == 4) and (shape[1] == 1):
+                        if funcs[i].label == 'Convolution2DFunction':
+                            # Bingo!
+                            depthwise_conv2d = True
+
+
+            if depthwise_conv2d:
+                out_funcs.append(funcs[i])
+            else:
+                out_funcs.append(funcs[i-2])
+                out_funcs.append(funcs[i-1])
+                out_funcs.append(funcs[i])
+
+
+        return out_funcs
 
     def _get_layer_name(self, layer):
         """Generate layer name like "Convolution2DFunction-10-2".
@@ -611,7 +657,12 @@ class TensorFlowLiteConverter(object):
             in_shape = inp.shape
             in_data = inp.data
 
-            print('out shape = ', func.outputs[0]().shape)
+            num_groups = func.groups
+
+            depthwise = False
+            if num_groups > 1:
+                # Assume depthwise convolution
+                depthwise = True
 
             # filter
             # shape = [outC, inC, kh, kw]
@@ -631,10 +682,33 @@ class TensorFlowLiteConverter(object):
 
             format_prefix = '_nhwc'
 
-            # Apply [outC, inC, kh, kw] -> [outC, kh, kw, inC] conversion
-            filt_shape = (out_channels, filt.shape[2], filt.shape[3],
-                          in_channels)
-            filt_data = np.transpose(filt.data, (0, 2, 3, 1))
+            if depthwise:
+
+                # In Chainer, DepthwiseConvolution2D is transformed into
+                #
+                # multiplier, in_channels, kh, kw = W.shape
+                #
+                # W = transpose(W, (1, 0, 2, 3))
+                # W = reshape(W, (multiplier * in_channels, 1, kh, kw))
+                # convolution_2d(x, W, b, stride, pad, groups=in_channels)
+
+                multiplier = int(filt.shape[0] / num_groups) # Should be integer dividable
+
+                # TFLite expects [1, kh, kw, multiplier * in_channels]
+                # where out_channels == mult * in_channels
+
+                # [mult * num_groups, 1, kh, kw] -> [1, kh, kw, mult * in_channels]
+                filt_data = np.transpose(filt_data, (1, 2, 3, 0))
+
+                assert filt.shape[1] == 1
+
+                filt_shape = (1, filt.shape[2], filt.shape[3], filt.shape[0])
+
+            else:
+                # Apply [outC, inC, kh, kw] -> [kh, kw, inC, outC] conversion
+                filt_shape = (filt.shape[2], filt.shape[3], in_channels, out_channels)
+
+                filt_data = np.transpose(filt.data, (2, 3, 1, 0))
 
             parent_layer_name = parent_layer_names[0]
 
@@ -763,7 +837,6 @@ class TensorFlowLiteConverter(object):
             output_shape = (_output().shape[0], _output().shape[2],
                             _output().shape[3], _output().shape[1])
 
-            logger.info("conv2d.output.shape = {}".format(output_shape))
             output_id = tf_serializer.SerializeTensor(layer_name + '_0' + format_prefix,
                                                       in_dtype, output_shape,
                                                       None)
@@ -787,10 +860,22 @@ class TensorFlowLiteConverter(object):
 
             assert dilations[0] >= 1 and dilations[1] >= 1
 
-            serialize_ops.SerializeConv2D(tf_serializer, input_id, filter_id,
-                                          bias_id, output_id,
-                                          activation_function, tf_padding_mode,
-                                          stride, dilations)
+            if depthwise:
+                print('multiplier', multiplier)
+                print('output shape', output_shape)
+
+                serialize_ops.SerializeDepthwiseConv2D(tf_serializer, input_id, filter_id,
+                                              bias_id, output_id,
+                                              activation_function, tf_padding_mode,
+                                              stride, dilations, multiplier)
+
+
+            else:
+
+                serialize_ops.SerializeConv2D(tf_serializer, input_id, filter_id,
+                                              bias_id, output_id,
+                                              activation_function, tf_padding_mode,
+                                              stride, dilations)
 
         elif func.label == 'AveragePooling2D':
             #
@@ -2021,6 +2106,8 @@ class TensorFlowLiteConverter(object):
 
         elif func.label == 'Reshape':
 
+            raise bora
+
             assert (len(func.inputs) == 1)
 
             new_shape = func.outputs[0]().shape
@@ -2065,27 +2152,28 @@ class TensorFlowLiteConverter(object):
             print('output_shape', func.out_H, func.out_W)
 
             inp = func.inputs[0]
+            assert len(inp.shape) == 4
 
             in_shape = inp.shape
             in_data = inp.data
+            format_prefix = '_nhwc'
 
-            if len(in_shape) == 4:
-                # Assume NCHW
-                # Apply NHWC conversion
-                in_shape = (inp.shape[0], inp.shape[2], inp.shape[3],
-                            inp.shape[1])
-                if in_data is not None:
-                    in_data = np.transpose(inp.data, (0, 2, 3, 1))
+            # Assume NCHW
+            # Apply NHWC conversion
+            in_shape = (inp.shape[0], inp.shape[2], inp.shape[3],
+                        inp.shape[1])
+            if in_data is not None:
+                in_data = np.transpose(inp.data, (0, 2, 3, 1))
 
             # input
             if inp.name in self.input_names:
                 # Placeholder input
                 input_id = tf_serializer.SerializeTensor(
-                    inp.name, inp.dtype, in_shape, None)
+                    inp.name + format_prefix, inp.dtype, in_shape, None)
                 self.inputs[inp.name] = input_id
             elif parent_layer_names[0] == 'data':
                 input_id = tf_serializer.SerializeTensor(
-                    layer_name + '_input0', 'float32', in_shape, in_data)
+                    layer_name + '_input0' + format_prefix, 'float32', in_shape, in_data)
             else:
                 input_id = tf_serializer.FindConnection(parent_layer_names[0])
                 # There should have valid connection
@@ -2104,16 +2192,15 @@ class TensorFlowLiteConverter(object):
             _output = func.outputs[0]
             output_shape = _output().shape
 
-            if len(output_shape) == 4:
-                # NCHW -> NHWC
-                output_shape = (_output().shape[0], _output().shape[2],
-                                _output().shape[3], _output().shape[1])
+            # NCHW -> NHWC
+            output_shape = (_output().shape[0], _output().shape[2],
+                            _output().shape[3], _output().shape[1])
 
             logger.info("output.shape = {}".format(output_shape))
             print('len(shape) = {}'.format(len(output_shape)))
             print('ty(shape) = {}'.format(type(output_shape)))
             print('resize_images.out_shape = {}'.format(output_shape))
-            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0' + format_prefix,
                                                       inp.dtype, output_shape,
                                                       None)
             tf_serializer.RegisterConnection(layer_name, output_id)
@@ -2295,6 +2382,13 @@ class TensorFlowLiteConverter(object):
         dumped_list = _dump_graph(outputs)
         # logger.debug('dumped_list = %s', dumped_list)
         assert(len(dumped_list) > 0)
+
+        # Run DepthwiseConvolution2D folder
+        dumped_list = self._fold_depthwise_conv2d(dumped_list)
+
+        # HACK
+        for i, l in enumerate(dumped_list):
+            print(i, l)
 
         f = None
         tf_serializer = TensorFlowLiteSerializer()

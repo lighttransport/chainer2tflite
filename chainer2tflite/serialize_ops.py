@@ -11,12 +11,16 @@ from .tflite import AddOptions
 from .tflite import SubOptions
 from .tflite import MulOptions
 from .tflite import DivOptions
+from .tflite import DivOptions
 from .tflite import FloorDivOptions
 from .tflite import ReshapeOptions
 from .tflite import ResizeBilinearOptions
 from .tflite import ResizeNearestNeighborOptions
+
 from .tflite import Conv2DOptions
 from .tflite import Pool2DOptions
+from .tflite import DepthwiseConv2DOptions
+
 from .tflite import PadOptions
 from .tflite import LeakyReluOptions
 from .tflite import SoftmaxOptions
@@ -24,7 +28,8 @@ from .tflite import PackOptions
 from .tflite import ConcatenationOptions
 from .tflite import SqueezeOptions
 
-from .tflite import LocalResponseNormalization
+from .tflite import L2NormOptions
+from .tflite import LocalResponseNormalizationOptions
 
 from .tflite import SpaceToDepthOptions
 
@@ -235,6 +240,93 @@ def SerializeTransposeConv(serializer, output_shape_id, weights_id, input_id,
         serializer.builder,
         tflite.BuiltinOptions.BuiltinOptions.TransposeConvOptions)
     tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeDepthwiseConv2D(serializer, input_id, filter_id, bias_id,
+                    output_id, fused_activation_function, padding, stride, dilations, multiplier):
+    """Serialize depthwise_conv2d.
+
+    Args:
+        serializer: tflite serializer.
+        input_id(int): Input Tensor id.
+        filter_id(int): Filter Tensor id
+        bias_id(int): Bias Tensor id.
+        output_id(int): Output Tensor id.
+        fused_activation_function(string): activation function type('NONE').
+        padding(string): padding('SAME' or 'VALID')
+        stride([int]): [stride_w, stride_h].
+        dilations([int]): [dilation_w_factor, dilation_h_factor].
+        multiplier(int): Multiplier.
+
+    """
+
+    serializer.logger.info(
+        "depthwise_conv2d. input = {}, filter = {}, bias = {}, output = {}, fused_activation_function = {}, stride = {}, multiplier = {}".format(
+            input_id, filter_id, bias_id, output_id, fused_activation_function, stride, multiplier))
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.DEPTHWISE_CONV_2D)
+
+    # Options
+    if fused_activation_function == 'NONE':
+        activation_function_type = tflite.ActivationFunctionType.ActivationFunctionType.NONE
+    else:
+        print('Unsupported activation function: ', fused_activation_function)
+        raise
+
+    if padding == 'VALID':
+        padding_type = tflite.Padding.Padding.VALID
+    elif padding == 'SAME':
+        padding_type = tflite.Padding.Padding.SAME
+    else:
+        print('Unsupported padding: ', padding)
+        raise
+
+
+    tflite.DepthwiseConv2DOptions.DepthwiseConv2DOptionsStart(serializer.builder)
+    tflite.DepthwiseConv2DOptions.DepthwiseConv2DOptionsAddFusedActivationFunction(
+        serializer.builder, activation_function_type)
+    tflite.DepthwiseConv2DOptions.DepthwiseConv2DOptionsAddPadding(
+        serializer.builder, padding_type)
+    tflite.DepthwiseConv2DOptions.DepthwiseConv2DOptionsAddStrideW(
+        serializer.builder, stride[0])
+    tflite.DepthwiseConv2DOptions.DepthwiseConv2DOptionsAddStrideH(
+        serializer.builder, stride[1])
+    tflite.DepthwiseConv2DOptions.DepthwiseConv2DOptionsAddDilationWFactor(
+        serializer.builder, dilations[0])
+    tflite.DepthwiseConv2DOptions.DepthwiseConv2DOptionsAddDilationHFactor(
+        serializer.builder, dilations[1])
+    tflite.DepthwiseConv2DOptions.DepthwiseConv2DOptionsAddDepthMultiplier(
+        serializer.builder, multiplier)
+    tf_options = tflite.DepthwiseConv2DOptions.DepthwiseConv2DOptionsEnd(
+        serializer.builder)
+
+    # Inputs
+    num_inputs = 3
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(bias_id)
+    serializer.builder.PrependInt32(filter_id)
+    serializer.builder.PrependInt32(input_id)
+    tf_inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    tf_outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, tf_inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, tf_outputs)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder,
+        tflite.BuiltinOptions.BuiltinOptions.DepthwiseConv2DOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
+    serializer.logger.debug('opcode_id = {}'.format(opcode_id))
     tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
     op = tflite.Operator.OperatorEnd(serializer.builder)
 
@@ -560,7 +652,7 @@ def SerializeOpSub(serializer, x_id, y_id, output_id):
     tflite.SubOptions.SubOptionsStart(serializer.builder)
     tflite.SubOptions.SubOptionsAddFusedActivationFunction(
         serializer.builder, activation_function)
-    tf_options = tflite.AddOptions.SubOptionsEnd(serializer.builder)
+    tf_options = tflite.SubOptions.SubOptionsEnd(serializer.builder)
 
     tflite.Operator.OperatorStart(serializer.builder)
     tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
@@ -650,6 +742,42 @@ def SerializeOpDiv(serializer, x_id, y_id, output_id):
     serializer.operators.append(op)
 
     return op
+
+def SerializeOpRsqrt(serializer, input_id, output_id):
+    """Serialize Rsqrt op.
+
+    Args:
+        serializer: tflite serializer.
+        input_id(int): Input Tensor id.
+        output_id(int): Output Tensor id.
+
+    """
+
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.RSQRT)
+
+    # Inputs
+    num_inputs = 1
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(input_id)
+    inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
 
 def SerializeOpFloor(serializer, input_id, output_id):
 
@@ -1594,7 +1722,7 @@ def SerializeOpCast(serializer, input_id, output_id):
     return op
 
 
-def SerializeOpLocalResponseNormalization(serializer, input_id, output_id):
+def SerializeOpLocalResponseNormalization(serializer, input_id, output_id, radius, bias, alpha, beta):
     """Serialize LocalResponseNormalization op.
 
     Args:
@@ -1613,11 +1741,10 @@ def SerializeOpLocalResponseNormalization(serializer, input_id, output_id):
 
     # Options
     tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationOptionsStart(serializer.builder)
-    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationAddRadius(serializer.builder, radius)
-    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationAddBias(serializer.builder, bias)
-    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationAddAlpha(serializer.builder, alpha)
-    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationAddBeta(serializer.builder, beta)
-    #tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationAddBlockSize(serializer.builder, block_size)
+    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationOptionsAddRadius(serializer.builder, radius)
+    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationOptionsAddBias(serializer.builder, bias)
+    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationOptionsAddAlpha(serializer.builder, alpha)
+    tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationOptionsAddBeta(serializer.builder, beta)
     tf_options = tflite.LocalResponseNormalizationOptions.LocalResponseNormalizationOptionsEnd(serializer.builder)
 
     # Inputs
@@ -1641,6 +1768,54 @@ def SerializeOpLocalResponseNormalization(serializer, input_id, output_id):
     tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
     tflite.Operator.OperatorAddBuiltinOptionsType(
         serializer.builder, tflite.BuiltinOptions.BuiltinOptions.LocalResponseNormalizationOptions)
+    tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+def SerializeOpL2Normalization(serializer, input_id, output_id):
+    """Serialize L2Normalization op.
+
+    Args:
+
+        input_id (int): Input tensor id.
+        output_id (int): Output tensor id.
+
+    """
+
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.L2_NORMALIZATION)
+
+    tflite.L2NormOptions.L2NormOptionsStart(serializer.builder)
+    # Current tflite implentation does not support activation function.
+    tflite.L2NormOptions.L2NormOptionsAddFusedActivationFunction(
+        serializer.builder, tflite.ActivationFunctionType.ActivationFunctionType.NONE)
+    tf_options = tflite.L2NormOptions.L2NormOptionsEnd(
+        serializer.builder)
+
+    # Inputs
+    num_inputs = 1
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(input_id)
+    inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    outputs = serializer.builder.EndVector(num_outputs)
+
+    # We won't need data type parameter for input and output.
+    # So do not write out CastOptions
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    tflite.Operator.OperatorAddBuiltinOptionsType(
+        serializer.builder, tflite.BuiltinOptions.BuiltinOptions.L2NormOptions)
     tflite.Operator.OperatorAddBuiltinOptions(serializer.builder, tf_options)
     op = tflite.Operator.OperatorEnd(serializer.builder)
 

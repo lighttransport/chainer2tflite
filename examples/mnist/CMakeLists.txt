@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 2.8)
 
 # cmake modules
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/../cmake)
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/../cmake/sanitizers)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/../common/cmake)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/../common/cmake/sanitizers)
 find_package(Sanitizers) # Address sanitizer (-DSANITIZE_ADDRESS=ON)
 
 set(TFLITE_INCLUDE_DIR "" CACHE PATH "include path to tflite")

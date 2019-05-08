@@ -29,33 +29,35 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 
 ## Supported layers/ops
 
-| Chainer                 | tflite                    | Comment                                     |
-| ----------------------- | ------------------------- | ------------------------------------------- |
-| Add                     | ADD                       | two inputs only                             |
-| Sub                     | SUB                       |                                             |
-| Mul                     | MUL                       |                                             |
-| Div                     | DIV                       |                                             |
-| Reshape                 | RESHAPE                   |                                             |
-| LinearFunction          | FULLY_CONNECTED           | activation=None                             |
-| ReLU                    | RELU                      |                                             |
-| LeakyReLU               | REAKY_RELU                |                                             |
-| ResizeImages            | RESIZE_BILINEAR           | `align_corners=true`                        |
-| Pad                     | PADV2                     | Support constant value                      |
-| AveragePooling2D        | AVERAGE_POOL_2D           |                                             |
-| MaxPooling2D            | MAX_POOL_2D               |                                             |
-| Convolution2D           | CONV_2D                   | dilated=1                                   |
-| DilatedConvolution2D    | CONV_2D                   | dilated=N                                   |
-| SoftMax                 | SOFTMAX                   | `axis` in Chainer must be last dim          |
-| LogSoftMax              | LOG_SOFTMAX               | `axis` in Chainer must be last dim          |
-| Deconvolution2D         | CONV_2D_TRANSPOSE         |                                             |
-| Vstak                   | CONCATENATION OR PACK(1D) | axis=0                                      |
-| Hstak                   | CONCATENATION             | axis=1                                      |
-| Unpooling2D             | RESIZE_NEAREST_NEIGHBOR   | integer scaling factor only(e.g. 2.0, 3.0)  |
-| Transpose               | TRANSPOSE                 |                                             |
-| Squeeze                 | SQUEEZE                   |                                             |
-| Tile                    | TILE                      |                                             |
-| ExpandDims              | EXPAND_DIMS               |                                             |
-| Concat                  | CONCATENATION             |                                             |
+| Chainer                    | tflite                       | Comment                                     |
+| -------------------------- | ---------------------------- | ------------------------------------------- |
+| Add                        | ADD                          | two inputs only                             |
+| Sub                        | SUB                          |                                             |
+| Mul                        | MUL                          |                                             |
+| Div                        | DIV                          |                                             |
+| Reshape                    | RESHAPE                      |                                             |
+| LinearFunction             | FULLY_CONNECTED              | activation=None                             |
+| ReLU                       | RELU                         |                                             |
+| LeakyReLU                  | REAKY_RELU                   |                                             |
+| ResizeImages               | RESIZE_BILINEAR              | `align_corners=true`                        |
+| Pad                        | PADV2                        | Support constant value                      |
+| AveragePooling2D           | AVERAGE_POOL_2D              |                                             |
+| MaxPooling2D               | MAX_POOL_2D                  |                                             |
+| Convolution2D              | CONV_2D                      | dilated=1                                   |
+| DilatedConvolution2D       | CONV_2D                      | dilated=N                                   |
+| SoftMax                    | SOFTMAX                      | `axis` in Chainer must be last dim          |
+| LogSoftMax                 | LOG_SOFTMAX                  | `axis` in Chainer must be last dim          |
+| Deconvolution2D            | CONV_2D_TRANSPOSE            |                                             |
+| Vstak                      | CONCATENATION OR PACK(1D)    | axis=0                                      |
+| Hstak                      | CONCATENATION                | axis=1                                      |
+| Unpooling2D                | RESIZE_NEAREST_NEIGHBOR      | integer scaling factor only(e.g. 2.0, 3.0)  |
+| Transpose                  | TRANSPOSE                    |                                             |
+| Squeeze                    | SQUEEZE                      |                                             |
+| Tile                       | TILE                         |                                             |
+| ExpandDims                 | EXPAND_DIMS                  |                                             |
+| Concat                     | CONCATENATION                |                                             |
+| LocalResponseNormalization | LOCAL_RESPONSE_NORMALIZATION |                                             |
+| DepthwiseConvolution2D     | DEPTHWISE_CONV2D             | filter(weight) should be constant           |
 
 
 ## Conditionally supported layers/ops
@@ -66,9 +68,14 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 | ELU                     | ELU                       | tflite `r1.14` or later                     |
 | Space2Depth             | SPACE_TO_DEPTH            | 4D Tensor only                              |
 | Cast                    | CAST                      | `float32`, `int32` only                     |
+| NormalizeL2(normalize)  | L2_NORMALIZATION          | axis must be the last dim of input tensor.  |
+| DepthwiseConvolution2D  | DEPTHWISE_CONV_2D         | See details described the below             |
 
 See `chainer2tflite/convert_dropout.py` for details on `Dropout` conversion.
 At least we've confirmed unit test passes by force setting same seed value for random number generation.
+
+For `DepthwiseConvolution2D`, Chainer lowers it to `Transpose`, `Reshape` and `Convolution2DFunction` function sequences.
+We try to reconstruct `DepthwiseConvolution2D` from such function sequences, but may not be perfect.
 
 ## Unsupported Chainer functions
 
@@ -97,10 +104,8 @@ Although tflite serializer(`chainer2tflite/serialize_ops.py`) supports `FLOOR` a
 * [ ] ARG_MAX, ARG_MIN
 * Normalization
   * [ ] BatchNormalization
-    * Decompose into some math ops?
+    * Decompose into some math ops.
   * [ ] FixedBatchNormalization
-  * [ ] LocalResponseNormalization
-  * [ ] NormalizeL2
 * Array
   * [ ] Depth2Space(tflite does not support yet)
   * [ ] SplitAxis
@@ -178,6 +183,7 @@ See `examples` directory.
 * [ ] Quantized network
 * [ ] Refactor unit tester
 * [ ] Write tflite model to memory
+* [ ] Test if its safe we can convert Conv2D with `group > 1` to DEPTHWISE_CONV2D
 
 ## License
 
