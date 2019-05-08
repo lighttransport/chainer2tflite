@@ -426,14 +426,56 @@ class TensorFlowLiteConverter(object):
         # List of input names
         self.input_names = []
 
+    def _fold_transpose_and_conv2d(self, funcs):
+        """
+        Detect such a sequence of functions then remove Transpose.
+
+            chainer.functions.array.transpose.Transpose(W)
+            chainer.functions.connection.convolution_2d.Convolution2DFunction(W)
+
+        Args:
+            funcs : List of functions
+
+        Returns:
+            List of functions where Transpose func has been removed.
+        """
+
+        if len(funcs) < 2:
+            return funcs
+
+        out_funcs = []
+
+        # TODO(LTE): Refactor
+        for i in range(1, len(funcs), 2):
+
+            W_transpose = False
+
+            if (funcs[i-1].label == 'Transpose') and (funcs[i-3].axes == (1, 0, 2, 3)):
+                print("bora", funcs[i-1].inputs[0].data)
+                if funcs[i].label == 'Convolution2DFunction':
+                    print("bingo")
+                    # TODO(LTE): Ensure input to `Convolution2DFunction` is the output of `Transpose`.
+                    W_transpose = True
+
+
+            if W_transpose:
+                out_funcs.append(funcs[i])
+            else:
+                out_funcs.append(funcs[i-1])
+                out_funcs.append(funcs[i])
+
+
+        return out_funcs
+
+
     def _fold_depthwise_conv2d(self, funcs):
         """
         DepthwiseConvolution2D is decomposed into the following 3 functions.
         Detect such a functions and remove Transpose and Reshape.
 
-        chainer.functions.array.transpose.Transpose
-        chainer.functions.array.reshape.Reshape
-        chainer.functions.connection.convolution_2d.Convolution2DFunction
+            chainer.functions.array.transpose.Transpose
+            chainer.functions.array.reshape.Reshape
+            chainer.functions.connection.convolution_2d.Convolution2DFunction
 
 
         Args:
@@ -2383,12 +2425,24 @@ class TensorFlowLiteConverter(object):
         # logger.debug('dumped_list = %s', dumped_list)
         assert(len(dumped_list) > 0)
 
+        # HACK
+        print("------------------------------------")
+        for i, l in enumerate(dumped_list):
+            print(i, l)
+        print("------------------------------------")
+
         # Run DepthwiseConvolution2D folder
         dumped_list = self._fold_depthwise_conv2d(dumped_list)
 
-        # HACK
+        # Run Transpose + Conv2d folder
+        dumped_list = self._fold_transpose_and_conv2d(dumped_list)
+
+
+        print("------------------------------------")
         for i, l in enumerate(dumped_list):
             print(i, l)
+        print("------------------------------------")
+
 
         f = None
         tf_serializer = TensorFlowLiteSerializer()

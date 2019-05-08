@@ -43,37 +43,25 @@ def check_model_expect(test_path, input_names=None):
 
     # Load TFLite model and allocate tensors.
     interpreter = rt.lite.Interpreter(model_path=model_path)
-    interpreter.allocate_tensors()
-
     # Get input and output tensors.
     input_details = interpreter.get_input_details()
-    _output_details = interpreter.get_output_details()
-
-    # NOTE(LTE): output_details may contain duplicated items due to tensorflow bug?.
-    # As a work around, create unique entries of outputs
-
-    output_details = []
-    for outp in _output_details:
-        # Simple linear search
-        found = False
-        for i in range(len(output_details)):
-            if outp['name'] == output_details[i]['name']:
-                found = True
-
-        if not found:
-            output_details.append(outp)
-
-    print('input_details', input_details)
-    print('output_details', output_details)
+    output_details = interpreter.get_output_details()
 
     # TODO(LTE): Support multiple output tensors
     assert len(output_details) == 1
+
+    print('input_details', input_details)
+    print('output_details', output_details)
 
     rt_input_names = [value['name'] for value in input_details]
     rt_output_names = [value['name'] for value in output_details]
 
     print('rt inputs', rt_input_names)
     print('rt outputs', rt_output_names)
+
+    interpreter.allocate_tensors()
+
+
 
     # To detect unexpected inputs created by exporter, check input names
     if input_names is not None:

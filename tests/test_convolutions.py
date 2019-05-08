@@ -76,3 +76,4 @@ class TestConvolution2D_pad1(TFLiteModelTest):
 
     def test_output(self):
         self.expect(self.model, self.x)
+
