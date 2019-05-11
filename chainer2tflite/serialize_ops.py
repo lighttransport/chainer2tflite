@@ -1021,6 +1021,45 @@ def SerializeOpELU(serializer, input_id, output_id):
 
     return op
 
+def SerializeOpLogistic(serializer, input_id, output_id):
+    """Serialize Logistic op.
+
+    Args:
+        serializer(TensorFlowLiteSerializer):
+        input_id(int32): Input tensor id
+        output_id(int32): Output tensor id
+
+    Returns:
+        tflite.Operator
+
+    """
+
+    opcode_id = serializer.RegisterBuiltinOpcode(
+        tflite.BuiltinOperator.BuiltinOperator.LOGISTIC)
+
+    # Inputs
+    num_inputs = 1
+    tflite.Operator.OperatorStartInputsVector(serializer.builder, num_inputs)
+    serializer.builder.PrependInt32(input_id)
+    inputs = serializer.builder.EndVector(num_inputs)
+
+    # Outputs
+    num_outputs = 1
+    tflite.Operator.OperatorStartOutputsVector(serializer.builder, num_outputs)
+    serializer.builder.PrependInt32(output_id)
+    outputs = serializer.builder.EndVector(num_outputs)
+
+    tflite.Operator.OperatorStart(serializer.builder)
+    tflite.Operator.OperatorAddInputs(serializer.builder, inputs)
+    tflite.Operator.OperatorAddOutputs(serializer.builder, outputs)
+    tflite.Operator.OperatorAddOpcodeIndex(serializer.builder, opcode_id)
+    op = tflite.Operator.OperatorEnd(serializer.builder)
+
+    serializer.operators.append(op)
+
+    return op
+
+
 def SerializeOpReLU(serializer, input_id, output_id):
     """Serialize ReLU op.
 

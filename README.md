@@ -41,6 +41,7 @@ $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 | LeakyReLU                  | REAKY_RELU                   |                                             |
 | ResizeImages               | RESIZE_BILINEAR              | `align_corners=true`                        |
 | Pad                        | PADV2                        | Support constant value                      |
+| Sigmoid                    | LOGISTIC                     |                                             |
 | AveragePooling2D           | AVERAGE_POOL_2D              |                                             |
 | MaxPooling2D               | MAX_POOL_2D                  |                                             |
 | Convolution2D              | CONV_2D                      | dilated=1                                   |
@@ -112,6 +113,10 @@ Although tflite serializer(`chainer2tflite/serialize_ops.py`) supports `FLOOR` a
   * [ ] Where
   * [ ] Copy
   * [ ] GetItem
+* RNN
+  * [ ] RNN
+  * [ ] GRU
+  * [ ] LSTM
 * Loss
   * [ ] SoftmaxCrossEntropy
 * [ ] TOP_K
@@ -174,13 +179,14 @@ See `examples` directory.
 
 ## TODO
 
+* [ ] RNN
 * [ ] Remove redundant NCHW and NHWC conversion.
   * For example, Currently we insert `Transpose` op for each `Conv2D` op. When the network contains sequence of `Conv2D`, we should insert `Transpose` for the beggining and the end of `Conv2D`s.
 * [ ] Support multiple outputs graph.
 * [ ] Android demo(train with Chainer, run tflite on mobile).
 * [ ] Support TensorFlow-Lite micro(experimental) to run Chainer-trained model on IoT devices
 * [ ] More functions/links, ops, etc
-* [ ] Quantized network
+* [ ] Quantize weight
 * [ ] Refactor unit tester
 * [ ] Write tflite model to memory
 * [ ] Test if its safe we can convert Conv2D with `group > 1` to DEPTHWISE_CONV2D

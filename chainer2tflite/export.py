@@ -496,11 +496,25 @@ class TensorFlowLiteConverter(object):
 
             depthwise_conv2d = False
 
+            # Use `id`(pointer address) to identitify the input of successor
+            # FunctionNode are connected to the output of predecessor
+            # FunctionNode.
+            # Note: output is a weakref object.
             if (funcs[i-2].label == 'Transpose') and (funcs[i-2].axes == (1, 0, 2, 3)):
                 if funcs[i-1].label == 'Reshape':
+                    # Ensure Transpose.output == Reshape.input
+                    if funcs[i-1].inputs[0] != funcs[i-2].outputs[0]():
+                        break
+
                     shape = funcs[i-1].outputs[0]().shape
+
                     if (len(shape) == 4) and (shape[1] == 1):
                         if funcs[i].label == 'Convolution2DFunction':
+
+                            # Ensure Reshape.output == Convolution2DFunction.W(input[1])
+                            if funcs[i].inputs[1] != funcs[i-1].outputs[0]():
+                                break
+
                             # Bingo!
                             depthwise_conv2d = True
 
@@ -1801,6 +1815,41 @@ class TensorFlowLiteConverter(object):
 
             serialize_ops.SerializeOpELU(tf_serializer, input_id, output_id)
 
+        elif func.label == 'Sigmoid':
+
+            assert (len(func.inputs) == 1)
+
+            # TODO(LTE): Support non-float32 type
+
+            # input
+            inp = func.inputs[0]
+            if inp.name in self.input_names:
+                # Placeholder input
+                input_id = tf_serializer.SerializeTensor(
+                    inp.name, 'float32', inp.shape, None)
+                self.inputs[inp.name] = input_id
+            elif parent_layer_names[0] == 'data':
+                input_id = tf_serializer.SerializeTensor(
+                    layer_name + '_input0', 'float32', inp.shape, inp.data)
+            else:
+                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                # There should have valid connection
+                if input_id is None:
+                    logger.fatal('{} not found in connections'.format(
+                        parent_layer_names[0]))
+                    raise
+
+            # output
+            _output = func.outputs[0]
+            logger.info("output.shape = {}".format(_output().shape))
+            output_id = tf_serializer.SerializeTensor(layer_name + '_0',
+                                                      _output().dtype,
+                                                      _output().shape, None)
+            tf_serializer.RegisterConnection(layer_name, output_id)
+
+            # Use Logistic in tflite
+            serialize_ops.SerializeOpLogistic(tf_serializer, input_id, output_id)
+
         elif func.label == 'ReLU':
 
             assert (len(func.inputs) == 1)
@@ -2425,24 +2474,23 @@ class TensorFlowLiteConverter(object):
         # logger.debug('dumped_list = %s', dumped_list)
         assert(len(dumped_list) > 0)
 
-        # HACK
-        print("------------------------------------")
+        # Assign unique id to FunctionNode
         for i, l in enumerate(dumped_list):
-            print(i, l)
+            setattr(l, "__ch2tflite_node_id__", i)
+            print(i, id(l))
         print("------------------------------------")
 
-        # Run DepthwiseConvolution2D folder
+        # Run DepthwiseConvolution2D foldering
         dumped_list = self._fold_depthwise_conv2d(dumped_list)
 
-        # Run Transpose + Conv2d folder
+        # Run Transpose + Conv2d foldering
         dumped_list = self._fold_transpose_and_conv2d(dumped_list)
 
 
         print("------------------------------------")
         for i, l in enumerate(dumped_list):
-            print(i, l)
+            print(i, id(l), getattr(l, "__ch2tflite_node_id__"))
         print("------------------------------------")
-
 
         f = None
         tf_serializer = TensorFlowLiteSerializer()
