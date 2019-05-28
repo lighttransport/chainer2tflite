@@ -2474,9 +2474,11 @@ class TensorFlowLiteConverter(object):
         # logger.debug('dumped_list = %s', dumped_list)
         assert(len(dumped_list) > 0)
 
+        #
         # Assign unique id to FunctionNode
+        #
         for i, l in enumerate(dumped_list):
-            setattr(l, "__ch2tflite_node_id__", i)
+            setattr(l, "__ch2tflite_node_id__", id(l))
             print(i, id(l))
         print("------------------------------------")
 
@@ -2532,7 +2534,9 @@ def export(model, args, filename):
 
     # forward eval
 
-    # `inputs` contain chainer.Variable with name assigned.
+    #
+    # Transform input(args) to chainer.Variable type and assign unique name.
+    #
     inputs = []
     if isinstance(args, tuple):
         args = list(args)
