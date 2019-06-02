@@ -446,7 +446,9 @@ class TensorFlowLiteConverter(object):
         out_funcs = []
 
         # TODO(LTE): Refactor
-        for i in range(1, len(funcs), 2):
+        i = 1
+        for j in range(1, len(funcs), 2):
+            i = j
 
             W_transpose = False
 
@@ -464,6 +466,11 @@ class TensorFlowLiteConverter(object):
                 out_funcs.append(funcs[i-1])
                 out_funcs.append(funcs[i])
 
+
+        # remainder
+        if (i + 1) < len(funcs):
+            for j in range(i+1, len(funcs)):
+                out_funcs.append(funcs[j])
 
         return out_funcs
 
@@ -492,7 +499,10 @@ class TensorFlowLiteConverter(object):
         out_funcs = []
 
         # TODO(LTE): Refactor
-        for i in range(2, len(funcs), 3):
+        i = 2
+        for j in range(2, len(funcs), 3):
+
+            i = j
 
             depthwise_conv2d = False
 
@@ -526,6 +536,10 @@ class TensorFlowLiteConverter(object):
                 out_funcs.append(funcs[i-1])
                 out_funcs.append(funcs[i])
 
+        # remainder
+        if (i+1) < len(funcs):
+            for j in range(i+1, len(funcs)):
+                out_funcs.append(funcs[j])
 
         return out_funcs
 
@@ -688,6 +702,7 @@ class TensorFlowLiteConverter(object):
 
             # output
             _output = func.outputs[0]
+            logger.info("Linear output.id = {}".format(id(_output())))
             logger.info("output.shape = {}".format(_output().shape))
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       inp.dtype,
@@ -1858,6 +1873,7 @@ class TensorFlowLiteConverter(object):
 
             # input
             inp = func.inputs[0]
+            logger.info("ReLU.input.id = {}".format(id(inp)))
             if inp.name in self.input_names:
                 # Placeholder input
                 input_id = tf_serializer.SerializeTensor(
@@ -1876,7 +1892,8 @@ class TensorFlowLiteConverter(object):
 
             # output
             _output = func.outputs[0]
-            logger.info("output.shape = {}".format(_output().shape))
+            logger.info("ReLU.output.id = {}".format(id(_output())))
+            logger.info("ReLU.output.shape = {}".format(_output().shape))
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       'float32',
                                                       _output().shape, None)
@@ -2477,8 +2494,9 @@ class TensorFlowLiteConverter(object):
         #
         # Assign unique id to FunctionNode
         #
+        print("-- input nodes -------------------")
         for i, l in enumerate(dumped_list):
-            setattr(l, "__ch2tflite_node_id__", id(l))
+            setattr(l, "__ch2tflite_id__", id(l))
             print(i, id(l))
         print("------------------------------------")
 
@@ -2489,9 +2507,9 @@ class TensorFlowLiteConverter(object):
         dumped_list = self._fold_transpose_and_conv2d(dumped_list)
 
 
-        print("------------------------------------")
+        print("-- list of nodes -------------------")
         for i, l in enumerate(dumped_list):
-            print(i, id(l), getattr(l, "__ch2tflite_node_id__"))
+            print(i, id(l), getattr(l, "__ch2tflite_id__"))
         print("------------------------------------")
 
         f = None
@@ -2585,6 +2603,7 @@ def export(model, args, filename):
     logger.info('# of inputs = {}'.format(len(inputs)))
     logger.info('# of outputs = {}'.format(len(outputs)))
 
+    # Assign name
     for i, outp in enumerate(outputs):
         assert isinstance(outp, variable.Variable)
         if outp.name is None:
