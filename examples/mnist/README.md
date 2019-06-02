@@ -1,10 +1,12 @@
 # mnist example
 
-## Convert model
+## Convert Chainer model to tflite
 
 ```python
 $ python convert_mnist_model.py
 ```
+
+`minist.tflite` file will be generated.
 
 ## Inference program
 

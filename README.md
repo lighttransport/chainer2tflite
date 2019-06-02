@@ -182,7 +182,8 @@ See `examples` directory.
 * [ ] RNN
 * [ ] Remove redundant NCHW and NHWC conversion.
   * For example, Currently we insert `Transpose` op for each `Conv2D` op. When the network contains sequence of `Conv2D`, we should insert `Transpose` for the beggining and the end of `Conv2D`s.
-* [ ] Support multiple outputs graph.
+* [ ] Support a node which outputs multiple tensors(e.g. `split`)
+* [ ] Support a graph which have multiple outputs.
 * [ ] Android demo(train with Chainer, run tflite on mobile).
 * [ ] Support TensorFlow-Lite micro(experimental) to run Chainer-trained model on IoT devices
 * [ ] More functions/links, ops, etc

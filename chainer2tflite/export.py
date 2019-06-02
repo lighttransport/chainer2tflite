@@ -144,28 +144,48 @@ class TensorFlowLiteSerializer:
         # The number of tensor ids(for inputs/outputs in subgraph)
         self.num_tensor_ids = 0
 
-        # connection <-> tensor id map
-        self.conn_to_tensor_id = {}
+        # variable id <-> tensor id map
+        self.variable_id_to_tensor_id = {}
+
+        # name <-> tensor id map
+        self.name_to_tensor_id = {}
 
         self.logger = logger
 
 
-    def FindConnection(self, conn_name):
-        if conn_name in self.conn_to_tensor_id:
-            return self.conn_to_tensor_id[conn_name]
+    # Lookup variable_id and return corresponding tensor id if found.
+    def FindTensorIdByVariableId(self, variable_id):
+        if variable_id in self.variable_id_to_tensor_id:
+            return self.variable_id_to_tensor_id[variable_id]
 
         return None
 
-    def RegisterConnection(self, conn_name, tensor_id):
-        if conn_name in self.conn_to_tensor_id:
-            logger.fatal('{} is already registered.'.format(conn_name))
+    # Register tensor id with variable id
+    def RegisterTensorIdWithVariableId(self, variable_id, tensor_id):
+        if variable_id in self.variable_id_to_tensor_id:
+            logger.fatal('VariableId({}) is already registered.'.format(variable_id))
             raise
 
-        self.conn_to_tensor_id[conn_name] = tensor_id
+        self.variable_id_to_tensor_id[variable_id] = tensor_id
+
+    # Lookup name and return corresponding tensor id if found.
+    def FindTensorIdByName(self, name):
+        if name in self.name_to_tensor_id:
+            return self.name_to_tensor_id[name]
+
+        return None
+
+    # Register variable with (unique) name.
+    def RegisterTensorIdWithName(self, name, tensor_id):
+        if name in self.name_to_tensor_id:
+            logger.fatal('name({}) is already registered.'.format(name))
+            raise
+
+        self.name_to_tensor_id[name] = tensor_id
 
     def EmitTensorId(self):
 
-        # Sequentially assign connection id.
+        # Assign tensor id  based on number of tensor ids
         tensor_id = self.num_tensor_ids
 
         self.num_tensor_ids = self.num_tensor_ids + 1
@@ -568,7 +588,7 @@ class TensorFlowLiteConverter(object):
             return 'data'
         return self._get_layer_name(parent_)
 
-    def _insertOpPad(self, tf_serializer, in_name, in_shape, in_dtype, in_data,
+    def _insertOpPad(self, tf_serializer, in_name, in_id, in_shape, in_dtype, in_data,
                      output_shape, pad_bw, pad_value, layer_name, parent_layer_name, tensor_format_prefix):
         """Insert Pad op for converting pooling op with padding > 0 in Chainer to tflite.
         """
@@ -582,7 +602,7 @@ class TensorFlowLiteConverter(object):
             input_id = tf_serializer.SerializeTensor(layer_name + '_input0' + tensor_format_prefix,
                                                      in_shape, in_data)
         else:
-            input_id = tf_serializer.FindConnection(parent_layer_name)
+            input_id = tf_serializer.FindTesnorIdByVariableId(in_id)
             # There should have valid connection
             if input_id is None:
                 logger.fatal('{} not found in connections'.format(
@@ -630,10 +650,12 @@ class TensorFlowLiteConverter(object):
         # output
         output_id = tf_serializer.SerializeTensor(layer_name + '_0', in_dtype,
                                                   output_shape, None)
-        tf_serializer.RegisterConnection(layer_name, output_id)
+        tf_serializer.RegisterTensorIdWithName(layer_name + '_0', output_id)
 
         serialize_ops.SerializeOpPad(tf_serializer, input_id, output_id,
                                      padding_id, constant_id)
+
+        return output_id
 
     def dump_function_object(self, func, tf_serializer):
 
@@ -682,7 +704,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', inp.dtype, inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -707,7 +729,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       inp.dtype,
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             activation_function = 'NONE'
             serialize_ops.SerializeOpFullyConnected(tf_serializer,
@@ -724,6 +746,7 @@ class TensorFlowLiteConverter(object):
 
             inp = func.inputs[0]
             in_name = inp.name
+            in_id = id(inp)
             in_dtype = inp.dtype
             in_shape = inp.shape
             in_data = inp.data
@@ -839,21 +862,13 @@ class TensorFlowLiteConverter(object):
                 # padding constant value for conv2 is 0.0.
                 pad_value = 0.0
 
-                self._insertOpPad(tf_serializer, in_name, in_shape, in_dtype,
+                input_id = self._insertOpPad(tf_serializer, in_name, in_id, in_shape, in_dtype,
                                   in_data, _output_shape, pad_bw, pad_value, _layer_name,
                                   parent_layer_names[0], format_prefix)
 
                 # rewrite parent name to OpPad's name
                 parent_layer_name = _layer_name
 
-
-                # Connect to Pad's output
-                input_id = tf_serializer.FindConnection(parent_layer_name)
-                # There should have valid connection
-                if input_id is None:
-                    logger.fatal('{} not found in connections'.format(
-                        parent_layer_name))
-                    raise
 
             else:
                 # input
@@ -866,7 +881,7 @@ class TensorFlowLiteConverter(object):
                     input_id = tf_serializer.SerializeTensor(
                         layer_name + '_input0' + format_prefix, inp.dtype, in_shape, in_data)
                 else:
-                    input_id = tf_serializer.FindConnection(parent_layer_name)
+                    input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
@@ -911,7 +926,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0' + format_prefix,
                                                       in_dtype, output_shape,
                                                       None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             # options
             activation_function = 'NONE'
@@ -962,6 +977,7 @@ class TensorFlowLiteConverter(object):
             inp = func.inputs[0]
 
             in_name = inp.name
+            in_id  = id(inp)
             in_dtype = inp.dtype
             in_shape = inp.shape
             in_data = inp.data
@@ -1028,7 +1044,7 @@ class TensorFlowLiteConverter(object):
                 # constant value for ave pooling is 0.0
                 pad_value = 0.0
 
-                self._insertOpPad(tf_serializer, in_name, in_shape, in_dtype,
+                input_id = self._insertOpPad(tf_serializer, in_name, in_id, in_shape, in_dtype,
                                   in_data, _output_shape, pad_bw, pad_value, _layer_name,
                                   parent_layer_names[0], format_prefix)
 
@@ -1036,13 +1052,6 @@ class TensorFlowLiteConverter(object):
                 parent_layer_name = _layer_name
 
 
-                # Connect to Pad's output
-                input_id = tf_serializer.FindConnection(parent_layer_name)
-                # There should have valid connection
-                if input_id is None:
-                    logger.fatal('{} not found in connections'.format(
-                        parent_layer_name))
-                    raise
 
             else:
                 # input
@@ -1055,7 +1064,7 @@ class TensorFlowLiteConverter(object):
                     input_id = tf_serializer.SerializeTensor(
                         layer_name + '_input0' + format_prefix, inp.dtype, in_shape, in_data)
                 else:
-                    input_id = tf_serializer.FindConnection(parent_layer_name)
+                    input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
@@ -1078,7 +1087,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0' + format_prefix,
                                                       inp.dtype, output_shape,
                                                       None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             # options
 
@@ -1106,6 +1115,7 @@ class TensorFlowLiteConverter(object):
 
             inp = func.inputs[0]
             in_name = inp.name
+            in_id = id(inp)
             in_dtype = inp.dtype
             in_shape = inp.shape
             in_data = inp.data
@@ -1172,21 +1182,13 @@ class TensorFlowLiteConverter(object):
                 # constant value for max pooling is -inf.
                 pad_value = -np.inf
 
-                self._insertOpPad(tf_serializer, in_name, in_shape, in_dtype,
+                input_id = self._insertOpPad(tf_serializer, in_name, in_id, in_shape, in_dtype,
                                   in_data, _output_shape, pad_bw, pad_value, _layer_name,
                                   parent_layer_names[0], format_prefix)
 
                 # rewrite parent name to OpPad's name
                 parent_layer_name = _layer_name
 
-
-                # Connect to Pad's output
-                input_id = tf_serializer.FindConnection(parent_layer_name)
-                # There should have valid connection
-                if input_id is None:
-                    logger.fatal('{} not found in connections'.format(
-                        parent_layer_name))
-                    raise
 
             else:
                 # input
@@ -1199,7 +1201,7 @@ class TensorFlowLiteConverter(object):
                     input_id = tf_serializer.SerializeTensor(
                         layer_name + '_input0' + format_prefix, inp.dtype, in_shape, in_data)
                 else:
-                    input_id = tf_serializer.FindConnection(parent_layer_name)
+                    input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
@@ -1221,7 +1223,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0' + format_prefix,
                                                       inp.dtype, output_shape,
                                                       None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             # options
 
@@ -1280,7 +1282,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0' + format_prefix, inp.dtype, in_shape, in_data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_name)
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1309,7 +1311,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0' + format_prefix,
                                                       inp.dtype, output_shape,
                                                       None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             # options
             serialize_ops.SerializeOpResizeNearestNeighbor(tf_serializer, input_id,
@@ -1331,7 +1333,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', inp.dtype, inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1356,7 +1358,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       _output().dtype,
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             serialize_ops.SerializeOpTranspose(tf_serializer, input_id, perm_id, output_id)
 
@@ -1375,7 +1377,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', inp.dtype, inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1399,7 +1401,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       _output().dtype,
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             serialize_ops.SerializeOpTile(tf_serializer, input_id, multiples_id, output_id)
 
@@ -1418,7 +1420,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', inp.dtype, inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1439,7 +1441,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       _output().dtype,
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             serialize_ops.SerializeOpExpandDims(tf_serializer, input_id, axis_id, output_id)
 
@@ -1459,7 +1461,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', inp.dtype, inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1482,7 +1484,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       _output().dtype,
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             serialize_ops.SerializeOpSqueeze(tf_serializer, input_id, output_id, axis)
 
@@ -1501,7 +1503,7 @@ class TensorFlowLiteConverter(object):
                     input_id = tf_serializer.SerializeTensor(
                         layer_name + '_input{}'.format(i), 'float32', inp.shape, inp.data)
                 else:
-                    input_id = tf_serializer.FindConnection(parent_layer_names[i])
+                    input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
@@ -1518,7 +1520,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       _output().dtype,
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             # axis param
             axis = func.axis
@@ -1539,7 +1541,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input{}'.format(0), 'float32', inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1557,7 +1559,7 @@ class TensorFlowLiteConverter(object):
 
                 output_ids.append(input_id)
 
-                tf_serializer.RegisterConnection(layer_name + '_{}'.format(i), output_id)
+                tf_serializer.RegisterTensorIdWithVariableId(id(outp()), output_id)
 
             logger.fatal('SplitAxis is not yet supported(need to implement multiple outputs in chainer2tflite firstly)')
             raise
@@ -1588,7 +1590,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input{}'.format(0) + format_prefix, inp.dtype, in_shape, in_data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1597,12 +1599,12 @@ class TensorFlowLiteConverter(object):
 
 
             # output
-            outp = func.outputs[0]
+            _output = func.outputs[0]
             output_id = tf_serializer.SerializeTensor(layer_name + '_0' + format_prefix,
-                                                      outp().dtype,
-                                                      outp().shape, None)
+                                                      _output().dtype,
+                                                      _output().shape, None)
 
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             # block size
             block_size = func.r
@@ -1623,7 +1625,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input{}'.format(0), inp.dtype, inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1632,13 +1634,13 @@ class TensorFlowLiteConverter(object):
 
 
             # output
-            outp = func.outputs[0]
+            _output = func.outputs[0]
             output_id = tf_serializer.SerializeTensor(layer_name,
-                                                      outp().dtype,
-                                                      outp().shape, None)
+                                                      _output().dtype,
+                                                      _output().shape, None)
 
 
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             serialize_ops.SerializeOpCast(tf_serializer, input_id, output_id)
 
@@ -1680,7 +1682,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input{}'.format(0), inp.dtype, inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1695,7 +1697,7 @@ class TensorFlowLiteConverter(object):
                                                       outp().shape, None)
 
 
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(outp()), output_id)
 
             serialize_ops.SerializeOpBatchNorm(tf_serializer, input_id, output_id)
 
@@ -1726,7 +1728,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input{}'.format(0) + format_prefix, inp.dtype, in_shape, in_data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1747,7 +1749,7 @@ class TensorFlowLiteConverter(object):
             alpha = float(func.alpha)
             beta = float(func.beta)
 
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(outp()), output_id)
 
             serialize_ops.SerializeOpLocalResponseNormalization(tf_serializer, input_id, output_id, radius, bias, alpha, beta)
 
@@ -1777,7 +1779,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input{}'.format(0) + format_prefix, inp.dtype, inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1792,7 +1794,7 @@ class TensorFlowLiteConverter(object):
                                                       outp().shape, None)
 
 
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(outp()), output_id)
 
             serialize_ops.SerializeOpL2Normalization(tf_serializer, input_id, output_id)
 
@@ -1813,7 +1815,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', 'float32', inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1826,7 +1828,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       'float32',
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             serialize_ops.SerializeOpELU(tf_serializer, input_id, output_id)
 
@@ -1847,7 +1849,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', 'float32', inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1860,7 +1862,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       _output().dtype,
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             # Use Logistic in tflite
             serialize_ops.SerializeOpLogistic(tf_serializer, input_id, output_id)
@@ -1883,7 +1885,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', 'float32', inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1897,7 +1899,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       'float32',
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             serialize_ops.SerializeOpReLU(tf_serializer, input_id, output_id)
 
@@ -1918,7 +1920,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', 'float32', inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1931,7 +1933,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       'float32',
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
 
             # alpha(slope)
@@ -1960,7 +1962,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', 'float32', inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -1973,7 +1975,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       'float32',
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
 
             # axis
@@ -2007,7 +2009,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', 'float32', inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -2020,7 +2022,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       'float32',
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
 
             # axis
@@ -2050,7 +2052,7 @@ class TensorFlowLiteConverter(object):
                     input_id = tf_serializer.SerializeTensor(
                         layer_name + '_input{}'.format(i), 'float32', inp.shape, inp.data)
                 else:
-                    input_id = tf_serializer.FindConnection(parent_layer_names[i])
+                    input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
@@ -2067,7 +2069,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       'float32',
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
 
             if len(func.inputs[0].shape) == 1:
@@ -2097,7 +2099,7 @@ class TensorFlowLiteConverter(object):
                     input_id = tf_serializer.SerializeTensor(
                         layer_name + '_input{}'.format(i), inp.dtype, inp.shape, inp.data)
                 else:
-                    input_id = tf_serializer.FindConnection(parent_layer_names[i])
+                    input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
@@ -2114,7 +2116,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       'float32',
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
 
             if len(func.inputs[0].shape) == 1:
@@ -2162,7 +2164,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', in_shape, in_data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -2207,7 +2209,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       inp.dtype, new_shape,
                                                       None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(func.outputs[0]), output_id)
 
             serialize_ops.SerializeOpPad(tf_serializer, input_id, output_id,
                                          padding_id, constant_id)
@@ -2232,7 +2234,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0', inp.dtype, inp.shape, inp.data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -2243,7 +2245,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0',
                                                       inp.dtype, new_shape,
                                                       None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
             serialize_ops.SerializeOpReshape(tf_serializer, input_id,
                                              output_id, new_shape)
 
@@ -2283,7 +2285,7 @@ class TensorFlowLiteConverter(object):
                 input_id = tf_serializer.SerializeTensor(
                     layer_name + '_input0' + format_prefix, 'float32', in_shape, in_data)
             else:
-                input_id = tf_serializer.FindConnection(parent_layer_names[0])
+                input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                 # There should have valid connection
                 if input_id is None:
                     logger.fatal('{} not found in connections'.format(
@@ -2311,7 +2313,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(layer_name + '_0' + format_prefix,
                                                       inp.dtype, output_shape,
                                                       None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             serialize_ops.SerializeOpResizeBilinear(tf_serializer, input_id,
                                                   output_id, new_shape_id)
@@ -2343,8 +2345,7 @@ class TensorFlowLiteConverter(object):
                         layer_name + '_input'.format(i), inp.data.dtype,
                         inp.shape, inp.data)
                 else:
-                    input_id = tf_serializer.FindConnection(
-                        parent_layer_names[i])
+                    input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
@@ -2361,7 +2362,7 @@ class TensorFlowLiteConverter(object):
             output_id = tf_serializer.SerializeTensor(output_name,
                                                       func.inputs[0].dtype,
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             serialize_ops.SerializeOpAdd(tf_serializer, input_ids[0],
                                          input_ids[1], output_id)
@@ -2393,8 +2394,7 @@ class TensorFlowLiteConverter(object):
                         layer_name + '_input'.format(i), inp.data.dtype,
                         inp.shape, inp.data)
                 else:
-                    input_id = tf_serializer.FindConnection(
-                        parent_layer_names[i])
+                    input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
@@ -2410,7 +2410,7 @@ class TensorFlowLiteConverter(object):
             output_name = layer_name + '_0'
             output_id = tf_serializer.SerializeTensor(output_name, 'float32',
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             serialize_ops.SerializeOpSub(tf_serializer, input_ids[0],
                                          input_ids[1], output_id)
@@ -2442,8 +2442,7 @@ class TensorFlowLiteConverter(object):
                         layer_name + '_input'.format(i), inp.data.dtype,
                         inp.shape, inp.data)
                 else:
-                    input_id = tf_serializer.FindConnection(
-                        parent_layer_names[i])
+                    input_id = tf_serializer.FindTensorIdByVariableId(id(inp))
                     # There should have valid connection
                     if input_id is None:
                         logger.fatal('{} not found in connections'.format(
@@ -2459,7 +2458,7 @@ class TensorFlowLiteConverter(object):
             output_name = layer_name + '_0'
             output_id = tf_serializer.SerializeTensor(output_name, 'float32',
                                                       _output().shape, None)
-            tf_serializer.RegisterConnection(layer_name, output_id)
+            tf_serializer.RegisterTensorIdWithVariableId(id(_output()), output_id)
 
             serialize_ops.SerializeOpMul(tf_serializer, input_ids[0],
                                          input_ids[1], output_id)
