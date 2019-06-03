@@ -588,6 +588,37 @@ class TensorFlowLiteConverter(object):
             return 'data'
         return self._get_layer_name(parent_)
 
+    def _inserOpReshape(self, tf_serializer, in_name, in_id, in_shape, in_dtype, in_data,
+                     output_shape, layer_name, parent_layer_name, tensor_format_prefix):
+        """Insert Reshape op. This is usually for NCHW <-> NHWC conversion.
+
+        Args:
+            tensor_format_prefix(str) : Usually 'nchw' or 'nhwc'
+        """
+
+        # Must be 4D shape
+        assert in_shape.ndim == 4
+        assert output_shape.ndim == 4
+
+        assert (tensor_format_prefix == 'nchw') or (tensor_format_prefix == 'nhwc')
+
+        # Input should be existing tensor
+        input_id = tf_serializer.FindTesnorIdByVariableId(in_id)
+        if input_id is None:
+            logger.fatal('{} not found in connections'.format(
+                parent_layer_names[0]))
+            raise
+
+        # output
+        output_id = tf_serializer.SerializeTensor(layer_name + '_{}'.format(tensor_format_prefix), in_dtype,
+                                                  output_shape, None)
+        tf_serializer.RegisterTensorIdWithName(layer_name + '_{}'.format(tensor_format_prefix), output_id)
+
+        serialize_ops.SerializeOpReshape(tf_serializer, input_id, output_id,
+                                         output_shape)
+
+        return output_id
+
     def _insertOpPad(self, tf_serializer, in_name, in_id, in_shape, in_dtype, in_data,
                      output_shape, pad_bw, pad_value, layer_name, parent_layer_name, tensor_format_prefix):
         """Insert Pad op for converting pooling op with padding > 0 in Chainer to tflite.
@@ -799,17 +830,20 @@ class TensorFlowLiteConverter(object):
                 filt_shape = (1, filt.shape[2], filt.shape[3], filt.shape[0])
 
             else:
-                # Apply [outC, inC, kh, kw] -> [kh, kw, inC, outC] conversion
-                filt_shape = (filt.shape[2], filt.shape[3], in_channels, out_channels)
+                # tflite CONV_2D filt = [outC, kh, kw, inC]
+                # Apply [outC, inC, kh, kw] -> [outC, kh, kw, inC] conversion
+                filt_shape = (out_channels, filt.shape[2], filt.shape[3], in_channels)
 
-                filt_data = np.transpose(filt.data, (2, 3, 1, 0))
+                filt_data = np.transpose(filt.data, (0, 2, 3, 1))
 
             parent_layer_name = parent_layer_names[0]
 
             pad_required = True
             tf_padding_mode = 'VALID'
+            print('Conv2d.depthwise = ', depthwise)
             print('func, pad = ', func.ph, func.pw)
-            print('filt_shape = ', filt.shape[2:])
+            print('Chainer Conv2d.filt_shape = ', filt.shape)
+            print('tflite CONV_2D.filt_shape = ', filt_shape)
 
             # TODO(LTE): Support uneven padding
             assert func.ph == func.pw
@@ -916,6 +950,7 @@ class TensorFlowLiteConverter(object):
 
             # output
             _output = func.outputs[0]
+            print("Chainer output.shape = ", _output().shape)
 
             output_shape = _output().shape
 
