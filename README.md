@@ -26,6 +26,15 @@ If you want to re-generate python binding from tflite schema, use `flatc` to gen
 $ flatc -p /path/to/tensorflow/tensorflow/lite/schema/schema.fbs
 ```
 
+## NCHW and NHWC conversion
+
+TensorFlow-Lite only supports NHWC format.
+Chainer uses NCHW as a default tensor format.
+
+chainer2tflite inserts `Transpose` op for each input and output of op where NHWC format conversion is required(e.g. `CONV_2D`).
+This is redundant but simple and workable solution.
+Insert minimum `Transpose` op by analyzing input graph is TODO.
+
 
 ## Supported layers/ops
 
@@ -179,6 +188,8 @@ See `examples` directory.
 
 ## TODO
 
+* Unit tests
+  * [ ] Reshape
 * [ ] RNN
 * [ ] Remove redundant NCHW and NHWC conversion.
   * For example, Currently we insert `Transpose` op for each `Conv2D` op. When the network contains sequence of `Conv2D`, we should insert `Transpose` for the beggining and the end of `Conv2D`s.

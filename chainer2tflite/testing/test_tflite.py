@@ -27,10 +27,11 @@ def load_test_data(data_dir, input_names, output_names):
         assert len(files) == len(names)
 
         for npy in sorted(files):
-            print(npy)
+            #print(npy)
             arr = np.load(npy)
             name = names.pop(0)
             values[name] = arr
+            #print('test_data', name, arr)
         inout_values.append(values)
     return tuple(inout_values)
 
@@ -91,11 +92,8 @@ def check_model_expect(test_path, input_names=None):
         for ref_name, ref_value in inputs.items():
             print('{}.shape = {}'.format(ref_name, ref_value.shape))
 
-            # Determine NHWC -> NCHW conversion by looking name of tensor.
-            # TODO(LTE): Determine NHWC -> NCHW conversion by inspecting this input tensor is connected to.
-            if len(ref_value.shape) == 4 and ref_name.endswith('_nhwc'):
-                # Convert to (batch, H, W, C)(TensorFlow's default)
-                ref_value = np.transpose(ref_value, (0, 2, 3, 1))
+            # We don't need to consider NCHW <-> NHWC conversion, since such a format conversion is already embedded in
+            # network graph.
 
             # Simple linear search
             found = False
@@ -126,12 +124,6 @@ def check_model_expect(test_path, input_names=None):
         print('tflite out shape = ', rt_out.shape)
 
         print('tflite out', rt_out)
-
-        # Determine NHWC -> NCHW conversion by looking name of tensor.
-        # TODO(LTE): Determine NHWC -> NCHW conversion by inspecting this input tensor is connected to.
-        if len(rt_out.shape) == 4 and rt_out_name.endswith('_nhwc'):
-            # Convert to NCHW for comparing with Chainer's result
-            rt_out = np.transpose(rt_out, (0, 3, 1, 2))
 
         # Its a dinner time! Taste it!
         for cy, my in zip(cn_out, rt_out):
