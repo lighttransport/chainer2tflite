@@ -2,6 +2,10 @@
 
 `chainer2tflite` is a model converter from Chainer(Python + NPZ) to TensorFlow-Lite(flatbuffers format)
 
+## Status
+
+In-progress. At least MNIST with 2 LinearFunction nodes works.
+
 ## Requirements
 
 * Chainer v5.4 or later
