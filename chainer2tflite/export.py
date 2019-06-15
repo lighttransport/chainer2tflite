@@ -655,16 +655,15 @@ class TensorFlowLiteConverter(object):
         print('padding.shape = ', padding.shape)
         print('padding = ', padding)
         padding_id = tf_serializer.SerializeTensor(layer_name + '_padding',
-                                                   in_dtype, padding.shape,
+                                                   padding.dtype, padding.shape,
                                                    padding)
 
         constant_id = -1
-        if abs(float(pad_value)) > 1e-6:
-            # create a constant value tensor used for padding value.
-            constant_value = np.array([pad_value], np.float32)
-            constant_id = tf_serializer.SerializeTensor(
-                layer_name + '_constant_value', constant_value.dtype,
-                constant_value.shape, constant_value)
+        # create a constant value tensor used for padding value.
+        constant_value = np.array([pad_value], np.float32)
+        constant_id = tf_serializer.SerializeTensor(
+            layer_name + '_constant_value', constant_value.dtype,
+            constant_value.shape, constant_value)
 
         # output
         output_id = tf_serializer.SerializeTensor(layer_name + '_0', in_dtype,
