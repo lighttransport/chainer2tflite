@@ -762,7 +762,7 @@ class TensorFlowLiteConverter(object):
                 logger.info('Convolution2DFunction in %s(id %d)',
                             self._get_parent_name(_input), id(_input))
 
-            assert len(func.inputs) > 2
+            assert len(func.inputs) >= 2
 
             inp = func.inputs[0]
             in_id = id(inp)
@@ -783,7 +783,7 @@ class TensorFlowLiteConverter(object):
                 output_shape = (inp.shape[0], inp.shape[2], inp.shape[3],
                                 inp.shape[1])
                 input_id = self._insertOpTransposeTensor(
-                    tf_serializer, in_tensor_id, in_dtype, [0, 2, 3, 1],
+                    tf_serializer, in_tensor_id, inp.shape, in_dtype, [0, 2, 3, 1],
                     output_shape, layer_name + '_to_nhwc', '_nhwc')
 
                 in_shape = output_shape
@@ -900,7 +900,7 @@ class TensorFlowLiteConverter(object):
             if pad_required:
                 # Insert `Pad` op
 
-                _layer_name = in_name + '_pad'
+                _layer_name = layer_name + '_pad'
                 pad_bw = []
 
                 if len(in_shape) == 4:
@@ -1076,7 +1076,7 @@ class TensorFlowLiteConverter(object):
                 output_shape = (inp.shape[0], inp.shape[2], inp.shape[3],
                                 inp.shape[1])
                 input_id = self._insertOpTransposeTensor(
-                    tf_serializer, in_tensor_id, in_dtype, [0, 2, 3, 1],
+                    tf_serializer, in_tensor_id, inp.shape, in_dtype, [0, 2, 3, 1],
                     output_shape, layer_name + '_to_nhwc', '_nhwc')
 
                 in_shape = output_shape
@@ -1263,7 +1263,7 @@ class TensorFlowLiteConverter(object):
                 output_shape = (inp.shape[0], inp.shape[2], inp.shape[3],
                                 inp.shape[1])
                 input_id = self._insertOpTransposeTensor(
-                    tf_serializer, in_tensor_id, in_dtype, [0, 2, 3, 1],
+                    tf_serializer, in_tensor_id, inp.shape, in_dtype, [0, 2, 3, 1],
                     output_shape, layer_name + '_to_nhwc', '_nhwc')
 
                 in_shape = output_shape
@@ -1322,7 +1322,7 @@ class TensorFlowLiteConverter(object):
 
                 # Insert `Pad` op
 
-                _layer_name = in_name + '_pad'
+                _layer_name = layer_name + '_pad'
                 pad_bw = []
 
                 if len(in_shape) == 4:
@@ -2582,7 +2582,7 @@ class TensorFlowLiteConverter(object):
                 output_shape = (inp.shape[0], inp.shape[2], inp.shape[3],
                                 inp.shape[1])
                 input_id = self._insertOpTransposeTensor(
-                    tf_serializer, in_tensor_id, inp.dtype, [0, 2, 3, 1],
+                    tf_serializer, in_tensor_id, inp.shape, inp.dtype, [0, 2, 3, 1],
                     output_shape, layer_name + '_to_nhwc', '_nhwc')
 
             else:
