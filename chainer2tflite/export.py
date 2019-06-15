@@ -1310,9 +1310,6 @@ class TensorFlowLiteConverter(object):
             pad_required = True
             tf_padding_mode = 'VALID'
 
-            # TODO(LTE): Support uneven padding
-            assert func.ph == func.pw
-
             if (func.ph == 0) and (func.pw == 0):
                 pad_required = False
 

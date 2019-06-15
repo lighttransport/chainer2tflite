@@ -52,6 +52,17 @@ class TestMaxPooling2DPad1(TFLiteModelTest):
     def test_output(self):
         self.expect(self.model, self.x)
 
+class TestMaxPooling2DPad1Stride2(TFLiteModelTest):
+
+    def setUp(self):
+
+        # arg = [kernel_size, stride, padding]
+        self.model = Model(F.max_pooling_2d, [2, 2, 1], False)
+        self.x = input_generator.increasing(1, 3, 6, 6)
+
+    def test_output(self):
+        self.expect(self.model, self.x)
+
 
 class TestUnpooling2D(TFLiteModelTest):
 
