@@ -192,6 +192,7 @@ See `examples` directory.
 
 ## TODO
 
+* [ ] Correctly compute padding value when `cover_all` is True for convolution/pooling function.
 * Unit tests
   * [ ] Reshape
 * [ ] RNN

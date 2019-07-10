@@ -303,6 +303,8 @@ class TensorFlowLiteSerializer:
         tensor_id = self.EmitTensorId()
         self.tensors.append(tf_tensor)
 
+        logger.info("Tensor[{}] name = {}, shape = {}".format(tensor_id, name, shape))
+
         return tensor_id
 
     def SerializeSubGraph(self, inputs, outputs):
@@ -929,7 +931,7 @@ class TensorFlowLiteConverter(object):
                     pad_bw.append([func.ph, func.ph])
                     pad_bw.append([func.pw, func.pw])
 
-                print('pad output shape = ', _output_shape)
+                logger.info('pad output shape = {}'.format(_output_shape))
 
                 # padding constant value for conv2 is 0.0.
                 pad_value = 0.0
@@ -1164,7 +1166,7 @@ class TensorFlowLiteConverter(object):
                     pad_bw.append([func.ph, func.ph])
                     pad_bw.append([func.pw, func.pw])
 
-                print('pad output shape = ', _output_shape)
+                logger.info('pad output shape = {}'.format(_output_shape))
 
                 # constant value for ave pooling is 0.0
                 pad_value = 0.0
@@ -1243,12 +1245,25 @@ class TensorFlowLiteConverter(object):
 
             assert len(func.inputs) == 1
 
+            logger.info("MaxPooling2D. ph, pw = {}, {}".format(func.ph, func.pw))
+            logger.info("MaxPooling2D. sx, sy = {}, {}".format(func.sx, func.sy))
+            logger.info("MaxPooling2D. kw, kh = {}, {}".format(func.kw, func.kh))
+            logger.info("MaxPooling2D. coverall = {}".format(func.cover_all))
+
+            cover_all = func.cover_all
+
             inp = func.inputs[0]
             in_name = inp.name
             in_id = id(inp)
             in_dtype = inp.dtype
             in_shape = inp.shape
             in_data = inp.data
+
+            # Get output shape
+            # FIXME(LTE): It looks chainer returns wrong output shape in some situation.
+            _output = func.outputs[0]
+            output_shape = _output().shape
+            logger.info('MaxPooling2D output shape = {}'.format(output_shape))
 
             input_is_variable = False
 
@@ -1310,7 +1325,7 @@ class TensorFlowLiteConverter(object):
             pad_required = True
             tf_padding_mode = 'VALID'
 
-            if (func.ph == 0) and (func.pw == 0):
+            if (func.ph == 0) and (func.pw == 0) and (cover_all == False):
                 pad_required = False
 
             if pad_required:
@@ -1321,34 +1336,40 @@ class TensorFlowLiteConverter(object):
                 _layer_name = layer_name + '_pad'
                 pad_bw = []
 
+                extra_padding = 0
+                if cover_all:
+                    # FIXME(LTE): Compute correct margin based on shape, padding and stride
+                    # https://docs.chainer.org/en/stable/reference/generated/chainer.functions.convolution_2d.html
+                    extra_padding = 1
+
                 if len(in_shape) == 4:
                     # NHWC
                     _output_shape = [
                         sum(x) for x in zip(in_shape,
-                                            [0, 2 * func.ph, 2 * func.pw, 0])
+                                            [0, 2 * func.ph + extra_padding, 2 * func.pw + extra_padding, 0])
                     ]
                     pad_bw.append([0, 0])
-                    pad_bw.append([func.ph, func.ph])
-                    pad_bw.append([func.pw, func.pw])
+                    pad_bw.append([func.ph, func.ph + extra_padding])
+                    pad_bw.append([func.pw, func.pw + extra_padding])
                     pad_bw.append([0, 0])
                 elif len(in_shape) == 3:
                     # HWC
                     _output_shape = [
                         sum(x)
-                        for x in zip(in_shape, [2 * func.ph, 2 * func.pw, 0])
+                        for x in zip(in_shape, [2 * func.ph + extra_padding, 2 * func.pw + extra_padding, 0])
                     ]
-                    pad_bw.append([func.ph, func.ph])
-                    pad_bw.append([func.pw, func.pw])
+                    pad_bw.append([func.ph, func.ph + extra_padding])
+                    pad_bw.append([func.pw, func.pw + extra_padding])
                     pad_bw.append([0, 0])
                 else:
                     _output_shape = [
                         sum(x)
-                        for x in zip(in_shape, [2 * func.ph, 2 * func.pw, 0])
+                        for x in zip(in_shape, [2 * func.ph + extra_padding, 2 * func.pw + extra_padding, 0])
                     ]
-                    pad_bw.append([func.ph, func.ph])
-                    pad_bw.append([func.pw, func.pw])
+                    pad_bw.append([func.ph, func.ph + extra_padding])
+                    pad_bw.append([func.pw, func.pw + extra_padding])
 
-                print('pad output shape = ', _output_shape)
+                logger.info('pad output shape = {}'.format(_output_shape))
 
                 # constant value for max pooling is -inf.
                 pad_value = -np.inf
@@ -1373,10 +1394,6 @@ class TensorFlowLiteConverter(object):
                     else:
                         raise
 
-            # output
-            _output = func.outputs[0]
-
-            output_shape = _output().shape
 
             if len(output_shape) == 4:
                 # NCHW -> NHWC
@@ -2689,7 +2706,7 @@ class TensorFlowLiteConverter(object):
 
             # output
             _output = func.outputs[0]
-            logger.info("output.shape = {}".format(_output().shape))
+            logger.info("Add. output.shape = {}".format(_output().shape))
 
             output_name = layer_name + '_0'
             output_id = tf_serializer.SerializeTensor(output_name,
@@ -2828,25 +2845,22 @@ class TensorFlowLiteConverter(object):
         # logger.debug('dumped_list = %s', dumped_list)
         assert (len(dumped_list) > 0)
 
-        #
-        # Assign unique id to FunctionNode
-        #
-        print("-- input nodes -------------------")
-        for i, l in enumerate(dumped_list):
-            setattr(l, "__ch2tflite_id__", id(l))
-            print(i, id(l))
-        print("------------------------------------")
-
         # Run DepthwiseConvolution2D foldering
         dumped_list = self._fold_depthwise_conv2d(dumped_list)
 
         # Run Transpose + Conv2d foldering
         dumped_list = self._fold_transpose_and_conv2d(dumped_list)
 
-        print("-- list of nodes -------------------")
+        logger.info("-- list of nodes -------------------")
         for i, l in enumerate(dumped_list):
-            print(i, id(l), getattr(l, "__ch2tflite_id__"))
-        print("------------------------------------")
+            logger.info("=============================")
+            logger.info("{}, {}, {}".format(i, id(l), l.label))
+            for idx, inp in enumerate(l.inputs):
+                logger.info("  input[{}].shape = {}".format(idx, inp.shape))
+            for idx, outp in enumerate(l.outputs):
+                # output is a weakref
+                logger.info("  output[{}].shape = {}".format(idx, outp().shape))
+        logger.info("------------------------------------")
 
         f = None
         tf_serializer = TensorFlowLiteSerializer()
@@ -2875,6 +2889,7 @@ class TensorFlowLiteConverter(object):
 
             f = open(tflitemodel_filepath, 'wb')
             f.write(buf)
+            f.close()
 
             logger.info("Wrote a file: {} ({} bytes)".format(
                 tflitemodel_filepath, len(buf)))
